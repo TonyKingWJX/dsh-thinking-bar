@@ -1,0 +1,14 @@
+# 依赖与构建产物之外的东西都不入仓
+node_modules/
+.work/
+.scratch/
+.dsh-scratch.txt
+b6-dump.txt
+
+# 原始出图素材（体积大、非仓库必需）；成品 webp 见 preview/assets
+鲸鱼娘/
+*.psd
+*.ai
+
+# 截图脚本产物
+*.tmp

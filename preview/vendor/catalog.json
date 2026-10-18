@@ -1,0 +1,369 @@
+{
+  "current": {
+    "provider": "cline",
+    "model": "cline-pass/deepseek-v4.1-flash"
+  },
+  "failures": [],
+  "groups": [
+    {
+      "id": "cline",
+      "name": "cline",
+      "models": [
+        {
+          "id": "cline-pass/deepseek-v4.1-flash",
+          "name": "cline-pass/deepseek-v4.1-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        },
+        {
+          "id": "cline-pass/glm-5.3-flash",
+          "name": "cline-pass/glm-5.3-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "stepfun",
+      "name": "stepfun",
+      "models": [
+        {
+          "id": "step-3.7-flash",
+          "name": "step-3.7-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-router-v1",
+          "name": "step-router-v1",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              }
+            ]
+          }
+        },
+        {
+          "id": "step-5-preview",
+          "name": "step-5-preview",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "mirasimcpa",
+      "name": "mirasim cpa反代",
+      "models": [
+        {
+          "id": "deepseek-flash",
+          "name": "deepseek-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "glm-5.3-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        },
+        {
+          "id": "kimi-k3",
+          "name": "kimi-k3",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "lightvela",
+      "name": "lightvela",
+      "models": [
+        {
+          "id": "auto",
+          "name": "auto",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "off",
+                "name": "Off"
+              },
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "xhigh",
+                "name": "Xhigh"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        },
+        {
+          "id": "ep-hyasr3",
+          "name": "ep-hyasr3"
+        }
+      ]
+    },
+    {
+      "id": "xiaoqie",
+      "name": "xiaoqie-ds",
+      "models": [
+        {
+          "id": "deepseek-v4.1-flash",
+          "name": "deepseek-v4.1-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "off",
+                "name": "Off"
+              },
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "xhigh",
+                "name": "Xhigh"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "xiaoqieglm",
+      "name": "xiaoqieglm",
+      "models": [
+        {
+          "id": "glm-5.3",
+          "name": "glm-5.3"
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "glm-5.3-flash",
+          "reasoning": {
+            "efforts": [
+              {
+                "id": "minimal",
+                "name": "Minimal"
+              },
+              {
+                "id": "low",
+                "name": "Low"
+              },
+              {
+                "id": "medium",
+                "name": "Medium"
+              },
+              {
+                "id": "high",
+                "name": "High"
+              },
+              {
+                "id": "xhigh",
+                "name": "Xhigh"
+              },
+              {
+                "id": "max",
+                "name": "Max"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1083 @@
+{
+  "config": {
+    "enabled": true,
+    "mode": "auto",
+    "probe": false,
+    "providers": {},
+    "models": {}
+  },
+  "overrides": {},
+  "providers": [
+    {
+      "id": "cline",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "cline-pass/deepseek-v4.1-flash",
+          "name": null,
+          "levels": null,
+          "planned": {
+            "route": "cline",
+            "modelId": "cline-pass/deepseek-v4.1-flash",
+            "source": "knowledge",
+            "ruleId": "deepseek-v4.1-flash",
+            "efforts": {
+              "off": "none",
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "xhigh": null,
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        },
+        {
+          "id": "cline-pass/glm-5.3-flash",
+          "name": null,
+          "levels": null,
+          "planned": {
+            "route": "cline",
+            "modelId": "cline-pass/glm-5.3-flash",
+            "source": "knowledge",
+            "ruleId": "zai-glm-5.3",
+            "efforts": {
+              "off": null,
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "xhigh": null,
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        }
+      ]
+    },
+    {
+      "id": "stepfun",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "step-3.7-flash",
+          "name": "step-3.7-flash",
+          "levels": null,
+          "planned": null
+        },
+        {
+          "id": "step-router-v1",
+          "name": "step-router-v1",
+          "levels": null,
+          "planned": null
+        },
+        {
+          "id": "step-5-preview",
+          "name": "step-5-preview",
+          "levels": null,
+          "planned": null
+        }
+      ]
+    },
+    {
+      "id": "mirasimcpa",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "deepseek-flash",
+          "name": "deepseek-flash",
+          "levels": null,
+          "planned": {
+            "route": "mirasimcpa",
+            "modelId": "deepseek-flash",
+            "source": "knowledge",
+            "ruleId": "deepseek-flash",
+            "efforts": {
+              "off": "none",
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "glm-5.3-flash",
+          "levels": null,
+          "planned": {
+            "route": "mirasimcpa",
+            "modelId": "glm-5.3-flash",
+            "source": "knowledge",
+            "ruleId": "zai-glm-5.3",
+            "efforts": {
+              "off": null,
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "xhigh": null,
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        },
+        {
+          "id": "kimi-k3",
+          "name": "kimi-k3",
+          "levels": null,
+          "planned": {
+            "route": "mirasimcpa",
+            "modelId": "kimi-k3",
+            "source": "knowledge",
+            "ruleId": "moonshot-kimi",
+            "efforts": {
+              "off": null,
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "xhigh": null,
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lightvela",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "auto",
+          "name": "auto",
+          "levels": null,
+          "planned": null
+        },
+        {
+          "id": "ep-hyasr3",
+          "name": "ep-hyasr3",
+          "levels": null,
+          "planned": null
+        }
+      ]
+    },
+    {
+      "id": "xiaoqie",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "deepseek-v4.1-flash",
+          "name": "deepseek-v4.1-flash",
+          "levels": null,
+          "planned": null
+        }
+      ]
+    },
+    {
+      "id": "xiaoqieglm",
+      "name": null,
+      "api": "openai-completions",
+      "enabled": true,
+      "models": [
+        {
+          "id": "glm-5.3",
+          "name": "glm-5.3",
+          "levels": null,
+          "planned": null
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "glm-5.3-flash",
+          "levels": null,
+          "planned": {
+            "route": "xiaoqieglm",
+            "modelId": "glm-5.3-flash",
+            "source": "knowledge",
+            "ruleId": "zai-glm-5.3",
+            "efforts": {
+              "off": null,
+              "minimal": null,
+              "low": "low",
+              "medium": null,
+              "high": "high",
+              "xhigh": null,
+              "max": "max"
+            },
+            "defaultEffort": "off"
+          }
+        }
+      ]
+    }
+  ],
+  "models": {},
+  "planned": [
+    {
+      "route": "cline",
+      "modelId": "cline-pass/deepseek-v4.1-flash",
+      "source": "knowledge",
+      "ruleId": "deepseek-v4.1-flash",
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    },
+    {
+      "route": "cline",
+      "modelId": "cline-pass/glm-5.3-flash",
+      "source": "knowledge",
+      "ruleId": "zai-glm-5.3",
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    },
+    {
+      "route": "mirasimcpa",
+      "modelId": "deepseek-flash",
+      "source": "knowledge",
+      "ruleId": "deepseek-flash",
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    },
+    {
+      "route": "mirasimcpa",
+      "modelId": "glm-5.3-flash",
+      "source": "knowledge",
+      "ruleId": "zai-glm-5.3",
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    },
+    {
+      "route": "mirasimcpa",
+      "modelId": "kimi-k3",
+      "source": "knowledge",
+      "ruleId": "moonshot-kimi",
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    },
+    {
+      "route": "xiaoqieglm",
+      "modelId": "glm-5.3-flash",
+      "source": "knowledge",
+      "ruleId": "zai-glm-5.3",
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      },
+      "defaultEffort": "off"
+    }
+  ],
+  "levels": [
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max"
+  ],
+  "rules": [
+    {
+      "id": "anthropic-claude-full-ladder",
+      "vendor": [
+        "anthropic",
+        "claude"
+      ],
+      "model": [
+        "claude-5-5",
+        "opus-5-5",
+        "opus-5.5",
+        "fable-5-5",
+        "sonnet-5-5",
+        "haiku-5-5"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "anthropic-claude-fable5",
+      "vendor": [
+        "anthropic",
+        "claude"
+      ],
+      "model": [
+        "claude-fable-5",
+        "fable-5",
+        "claude-opus-5",
+        "claude-sonnet-5"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "inherit",
+        "low": "inherit",
+        "medium": "inherit",
+        "high": "inherit",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "anthropic-claude-4-late",
+      "vendor": [
+        "anthropic",
+        "claude"
+      ],
+      "model": [
+        "opus-4-6",
+        "opus-4-7",
+        "opus-4-8",
+        "opus-4.6",
+        "opus-4.7",
+        "opus-4.8",
+        "sonnet-4-6",
+        "sonnet-4.6"
+      ],
+      "efforts": {
+        "off": "inherit",
+        "minimal": "inherit",
+        "low": "inherit",
+        "medium": "inherit",
+        "high": "inherit",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "anthropic-claude-generic",
+      "vendor": [
+        "anthropic",
+        "claude"
+      ],
+      "model": [
+        "claude",
+        "sonnet",
+        "opus",
+        "haiku",
+        "fable",
+        "mythos"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "inherit",
+        "low": "inherit",
+        "medium": "inherit",
+        "high": "inherit",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "claude-gateway",
+      "vendor": [
+        "cloudflare-ai-gateway",
+        "github-copilot",
+        "opencode",
+        "amazon-bedrock",
+        "bedrock",
+        "copilot",
+        "vercel-ai-gateway"
+      ],
+      "model": [
+        "claude",
+        "sonnet",
+        "opus",
+        "haiku",
+        "fable"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "inherit",
+        "low": "inherit",
+        "medium": "inherit",
+        "high": "inherit",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "openai-gpt-5.6-plus",
+      "vendor": [
+        "openai",
+        "openai-codex",
+        "azure-openai-responses",
+        "codex"
+      ],
+      "model": [
+        "gpt-5.6",
+        "gpt-6",
+        "gpt5.6",
+        "gpt5-6"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "openai-gpt-5",
+      "vendor": [
+        "openai",
+        "openai-codex",
+        "azure-openai-responses",
+        "codex"
+      ],
+      "model": [
+        "gpt-5",
+        "gpt5",
+        "gpt-4",
+        "o1",
+        "o3",
+        "o4",
+        "gpt-oss",
+        "codex"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "google-gemma-4",
+      "vendor": [
+        "google",
+        "google-vertex",
+        "gemini"
+      ],
+      "model": [
+        "gemma-4"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "MINIMAL",
+        "low": null,
+        "medium": null,
+        "high": "HIGH",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "google-gemini-3",
+      "vendor": [
+        "google",
+        "google-vertex",
+        "gemini"
+      ],
+      "model": [
+        "gemini-3",
+        "gemini3"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": null,
+        "max": null
+      }
+    },
+    {
+      "id": "google-gemini-generic",
+      "vendor": [
+        "google",
+        "google-vertex",
+        "gemini"
+      ],
+      "model": [
+        "gemini",
+        "gemma",
+        "thinking"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": null,
+        "max": null
+      }
+    },
+    {
+      "id": "xai-grok",
+      "vendor": [
+        "xai",
+        "grok",
+        "spacexai"
+      ],
+      "model": [
+        "grok"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": null
+      }
+    },
+    {
+      "id": "moonshot-kimi",
+      "vendor": [
+        "moonshot",
+        "kimi",
+        "moonshotai",
+        "kimi-coding"
+      ],
+      "model": [
+        "kimi",
+        "moonshot",
+        "k2",
+        "k3",
+        "moonshot-v"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "vendor": [
+        "deepseek"
+      ],
+      "model": [
+        "v4.1-flash",
+        "v4-1-flash",
+        "deepseek-v4.1-flash"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "vendor": [
+        "deepseek"
+      ],
+      "model": [
+        "v4-pro",
+        "deepseek-v4-pro"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "deepseek-flash",
+      "vendor": [
+        "deepseek"
+      ],
+      "model": [
+        "deepseek-flash",
+        "v4-flash",
+        "v4.1",
+        "v3.2",
+        "v3.1",
+        "v3",
+        "r1",
+        "r2",
+        "reasoner"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "max"
+      }
+    },
+    {
+      "id": "baseten-deepseek",
+      "vendor": [
+        "baseten"
+      ],
+      "model": [
+        "deepseek"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "fireworks-deepseek",
+      "vendor": [
+        "fireworks"
+      ],
+      "model": [
+        "deepseek"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "opencode-go-deepseek",
+      "vendor": [
+        "opencode-go"
+      ],
+      "model": [
+        "deepseek"
+      ],
+      "efforts": {
+        "off": "inherit",
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "max"
+      }
+    },
+    {
+      "id": "zai-glm-5.3",
+      "vendor": [
+        "zai",
+        "zhipu",
+        "z-ai",
+        "zhipuai",
+        "bigmodel",
+        "glm"
+      ],
+      "model": [
+        "glm-5.3",
+        "glm-5-3"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "zai-glm-5.2",
+      "vendor": [
+        "zai",
+        "zhipu",
+        "z-ai",
+        "zhipuai",
+        "bigmodel",
+        "glm"
+      ],
+      "model": [
+        "glm-5.2",
+        "glm-5-2",
+        "glm-5",
+        "glm-5-"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "high",
+        "xhigh": null,
+        "max": "max"
+      }
+    },
+    {
+      "id": "glm-generic",
+      "vendor": [
+        "zai",
+        "zhipu",
+        "z-ai",
+        "zhipuai",
+        "bigmodel",
+        "glm"
+      ],
+      "model": [
+        "glm"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": null,
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "qwen3",
+      "vendor": [
+        "qwen",
+        "alibaba",
+        "dashscope",
+        "aliyun"
+      ],
+      "model": [
+        "qwen",
+        "qwq"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": null,
+        "xhigh": "xhigh",
+        "max": null
+      }
+    },
+    {
+      "id": "minimax-m3",
+      "vendor": [
+        "minimax"
+      ],
+      "model": [
+        "m3",
+        "m2.7",
+        "m2.5",
+        "m2.1",
+        "minimax"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": "inherit",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "max"
+      }
+    },
+    {
+      "id": "mimo",
+      "vendor": [
+        "mimo",
+        "xiaomi"
+      ],
+      "model": [
+        "mimo",
+        "mimo-v2"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": "inherit",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "hy3-nothink",
+      "vendor": [
+        "hunyuan",
+        "tencent",
+        "hy"
+      ],
+      "model": [
+        "hy3",
+        "hy4",
+        "hunyuan"
+      ],
+      "efforts": {
+        "off": "noThink",
+        "minimal": "inherit",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "stepfun-step",
+      "vendor": [
+        "stepfun",
+        "step"
+      ],
+      "model": [
+        "step-",
+        "step3",
+        "step-3"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "together-minimax",
+      "vendor": [
+        "together"
+      ],
+      "model": [
+        "minimax-m2.7",
+        "minimaxai/minimax-m2.7",
+        "minimax"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "inherit",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "together-generic",
+      "vendor": [
+        "together"
+      ],
+      "model": [
+        "qwen",
+        "glm",
+        "kimi",
+        "deepseek",
+        "gemma",
+        "nemotron",
+        "inkling"
+      ],
+      "efforts": {
+        "off": "inherit",
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "inherit",
+        "xhigh": "inherit",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "cloudflare-workers-deepseek-glm",
+      "vendor": [
+        "cloudflare-workers-ai",
+        "cloudflare"
+      ],
+      "model": [
+        "deepseek",
+        "glm"
+      ],
+      "efforts": {
+        "off": "inherit",
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "high",
+        "xhigh": "inherit",
+        "max": "max"
+      }
+    },
+    {
+      "id": "cloudflare-workers-generic",
+      "vendor": [
+        "cloudflare-workers-ai",
+        "cloudflare"
+      ],
+      "model": [
+        "kimi",
+        "nemotron",
+        "gpt-oss",
+        "qwen",
+        "gemma",
+        "k2",
+        "k3"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": null,
+        "max": null
+      }
+    },
+    {
+      "id": "radius-cheap",
+      "vendor": [
+        "radius"
+      ],
+      "model": [
+        "cheap",
+        "precise",
+        "balanced",
+        "deepseek",
+        "glm",
+        "gpt",
+        "kimi",
+        "claude"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": "minimal",
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "xhigh"
+      }
+    },
+    {
+      "id": "ant-ling-ring",
+      "vendor": [
+        "ant-ling",
+        "antling"
+      ],
+      "model": [
+        "ring",
+        "ling"
+      ],
+      "efforts": {
+        "off": null,
+        "minimal": null,
+        "low": null,
+        "medium": null,
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": "inherit"
+      }
+    },
+    {
+      "id": "gateway-generic",
+      "vendor": [
+        "openrouter",
+        "vercel-ai-gateway"
+      ],
+      "model": [
+        "claude",
+        "gemini",
+        "gpt",
+        "deepseek",
+        "glm",
+        "kimi",
+        "grok",
+        "qwen",
+        "step",
+        "hy"
+      ],
+      "efforts": {
+        "off": "none",
+        "minimal": null,
+        "low": "low",
+        "medium": "medium",
+        "high": "high",
+        "xhigh": "xhigh",
+        "max": null
+      }
+    }
+  ],
+  "configFile": "C:\\Users\\wang\\.dsh\\thinking-effort.json",
+  "available": true
+}
