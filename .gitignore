@@ -12,3 +12,8 @@ b6-dump.txt
 
 # 鎴浘鑴氭湰浜х墿
 *.tmp
+
+# 旧版 dsh-thinking-effort 遗留文件（不入仓，本地保留）
+lib/client.js
+lib/index.js
+lib/knowledge.js
