@@ -50,6 +50,9 @@
 3. 点 **安装**，装完按提示刷新页面（或重启 DSH）。
 4. 插件列表里确认「思考等级栏 / dsh-thinking-bar」处于**启用**状态。
 
+> 也可以直接粘预构建包地址（不用源码构建）：
+> `https://github.com/TonyKingWJX/dsh-thinking-bar/releases/download/v1.0.0/dsh-thinking-bar-1.0.0.tgz`
+
 ### 方式二：命令行
 
 ```bash
@@ -58,6 +61,9 @@ dsh plugin --profile desktop add "github:TonyKingWJX/dsh-thinking-bar"
 
 # 或从本地目录装（源码包解压后）
 dsh plugin --profile desktop add "link:D:/Apps/dsh-thinking-bar"
+
+# 或直接用 Release 里的预构建包（tgz，装得最快）
+dsh plugin --profile desktop add "https://github.com/TonyKingWJX/dsh-thinking-bar/releases/download/v1.0.0/dsh-thinking-bar-1.0.0.tgz"
 ```
 
 `--profile` 换成你实际在用的 profile（常见是 `desktop` / `web` / `tui`，对应 `~/.dsh/profiles/<名字>/`）。
