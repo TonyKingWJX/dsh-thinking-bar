@@ -17,13 +17,25 @@
 
 ## 截图
 
-| 模型菜单（深色） | 模型菜单（浅色） |
-|---|---|
-| ![](docs/screenshots/menu-dark.png) | ![](docs/screenshots/menu-light.png) |
+点开输入框右下角的「模型 · 档位」，弹层长这样：
 
-| 鲸鱼娘 | 梁圣 |
+| Codex | 能量充能 | 曲率跃迁 |
+|---|---|---|
+| ![](docs/screenshots/popup-codex-dark.png) | ![](docs/screenshots/popup-energy-dark.png) | ![](docs/screenshots/popup-warp-dark.png) |
+
+| 量子纠缠 | 鲸鱼娘 | 梁圣 |
+|---|---|---|
+| ![](docs/screenshots/popup-quantum-dark.png) | ![](docs/screenshots/popup-whale-dark.png) | ![](docs/screenshots/popup-liang-dark.png) |
+
+模型列表（同一弹层的另一页）：
+
+| 深色 | 梁圣主题 |
 |---|---|
-| ![](docs/screenshots/theme-whale.png) | ![](docs/screenshots/theme-liang.png) |
+| ![](docs/screenshots/popup-model-dark.png) | ![](docs/screenshots/popup-liang-model.png) |
+
+浅色主题：
+
+![](docs/screenshots/popup-codex-light.png)
 
 ## 安装
 
