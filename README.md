@@ -27,14 +27,13 @@
 
 ## 安装
 
-插件包自带构建好的 `client.js`，不需要 Node 环境：
+插件包自带构建好的 `client.js`，不需要 Node 环境。
 
-```bash
-# 在 DSH 里用插件管理器安装本仓库目录
-plugin_manager install_bundle dsh-thinking-bar@1.0.0
-```
+1. 下载本仓库（`Code → Download ZIP`，或 `git clone https://github.com/TonyKingWJX/dsh-thinking-bar.git`）并解压到任意目录。
+2. 在 DSH 里用插件管理器安装这个**目录**：`plugin_manager install_bundle <仓库目录绝对路径>`。
+3. 或者在 DSH profile 的 `node_modules` 里为它建一个链接（Windows 下 `mklink /D`），重启后生效。
 
-或者手动把本目录链接到 DSH profile 的 `node_modules/dsh-thinking-bar`，重启后生效。
+装好后打开 **设置 → 思考等级栏**，形态切到 `Codex 滑杆`。
 
 ## 使用
 
