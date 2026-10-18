@@ -39,13 +39,54 @@
 
 ## 安装
 
-插件包自带构建好的 `client.js`，不需要 Node 环境。
+> 前置：DeepSeek Harness **0.2.1-rc.2 及以上**。插件包自带构建好的 `client.js`，安装时不需要编译、不需要装 Node。
 
-1. 下载本仓库（`Code → Download ZIP`，或 `git clone https://github.com/TonyKingWJX/dsh-thinking-bar.git`）并解压到任意目录。
-2. 在 DSH 里用插件管理器安装这个**目录**：`plugin_manager install_bundle <仓库目录绝对路径>`。
-3. 或者在 DSH profile 的 `node_modules` 里为它建一个链接（Windows 下 `mklink /D`），重启后生效。
+### 方式一：图形界面（最省事）
 
-装好后打开 **设置 → 思考等级栏**，形态切到 `Codex 滑杆`。
+1. 打开 DSH，左侧点 **插件** → 右上角 **添加插件**。
+2. 在「包名或地址」里填下面任意一种：
+   - GitHub 仓库地址：`https://github.com/TonyKingWJX/dsh-thinking-bar`
+   - 本地目录绝对路径：把 [Release](https://github.com/TonyKingWJX/dsh-thinking-bar/releases/latest) 的源码包解压后，填这个文件夹的路径，例如 `D:\Apps\dsh-thinking-bar`
+3. 点 **安装**，装完按提示刷新页面（或重启 DSH）。
+4. 插件列表里确认「思考等级栏 / dsh-thinking-bar」处于**启用**状态。
+
+### 方式二：命令行
+
+```bash
+# 从 GitHub 装
+dsh plugin --profile desktop add "github:TonyKingWJX/dsh-thinking-bar"
+
+# 或从本地目录装（源码包解压后）
+dsh plugin --profile desktop add "link:D:/Apps/dsh-thinking-bar"
+```
+
+`--profile` 换成你实际在用的 profile（常见是 `desktop` / `web` / `tui`，对应 `~/.dsh/profiles/<名字>/`）。
+
+这两条命令等价于在 profile 目录里跑 `pnpm add`，装完重启 DSH 即可。若重启后插件列表里没有它，说明只装进了依赖、没进组合列表，把 `~/.dsh/profiles/<profile>/package.json` 的 `dsh.profile.bundles` 补一行 `"dsh-thinking-bar"` 再重启（界面的「添加插件」不会遇到这个问题）。
+
+### 方式三：手动改 profile（离线 / 内网）
+
+1. 解压源码包到任意目录，记下绝对路径。
+2. 编辑 `~/.dsh/profiles/<profile>/package.json`：
+   - `dependencies` 里加 `"dsh-thinking-bar": "link:D:/Apps/dsh-thinking-bar"`
+   - `dsh.profile.bundles` 数组末尾加 `"dsh-thinking-bar"`
+3. 在该目录执行 `pnpm install`（会建 `node_modules/dsh-thinking-bar` 链接）。
+4. 重启 DSH。
+
+### 装好后
+
+打开 **设置 → 思考等级栏**，把「形态」切到 `Codex 滑杆`；输入框右下角的模型边上就会变成可点的「模型 · 档位」。
+
+## 卸载
+
+- **图形界面**：插件 → 思考等级栏 → **卸载**（想临时关掉用开关「停用」即可）。
+- **命令行**：
+  ```bash
+  dsh plugin --profile desktop remove dsh-thinking-bar
+  ```
+- **手动**：从 `~/.dsh/profiles/<profile>/package.json` 的 `dependencies` 和 `dsh.profile.bundles` 里删掉 `dsh-thinking-bar`，执行 `pnpm install`，重启。
+
+> 想升级到新版本：这个插件的安装页不支持直接"更新"，按上面步骤**先卸载再安装**即可。
 
 ## 使用
 
