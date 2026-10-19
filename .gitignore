@@ -1,16 +1,16 @@
-# 渚濊禆涓庢瀯寤轰骇鐗╀箣澶栫殑涓滆タ閮戒笉鍏ヤ粨
+# 依赖与构建产物之外的东西都不入仓
 node_modules/
 .work/
 .scratch/
 .dsh-scratch.txt
 b6-dump.txt
 
-# 鍘熷鍑哄浘绱犳潗锛堜綋绉ぇ銆侀潪浠撳簱蹇呴渶锛夛紱鎴愬搧 webp 瑙� preview/assets
-椴搁奔濞�/
+# 原始出图素材（体积大、非仓库必需）；成品 webp 见 preview/assets
+鲸鱼娘/
 *.psd
 *.ai
 
-# 鎴浘鑴氭湰浜х墿
+# 截图脚本产物
 *.tmp
 
 # 旧版 dsh-thinking-effort 遗留文件（不入仓，本地保留）
@@ -20,3 +20,7 @@ lib/knowledge.js
 
 # npm pack output
 *.tgz
+
+# 本地 npm 凭据（发布用 token，绝不入仓）
+.npmrc
+.npmtoken

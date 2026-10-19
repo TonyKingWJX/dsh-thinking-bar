@@ -1,9 +1,26 @@
 {
   "name": "dsh-thinking-bar",
   "version": "1.0.0",
-  "private": true,
   "description": "Switchable model/reasoning UI for the DSH composer; reasoning levels come from the system model catalog.",
   "type": "module",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "reasoning-effort",
+    "thinking",
+    "model-selector",
+    "ui"
+  ],
+  "homepage": "https://github.com/TonyKingWJX/dsh-thinking-bar#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TonyKingWJX/dsh-thinking-bar.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TonyKingWJX/dsh-thinking-bar/issues"
+  },
+  "author": "TonyKingWJX (https://github.com/TonyKingWJX)",
   "engines": {
     "dsh": ">=0.2.1-rc.2"
   },
