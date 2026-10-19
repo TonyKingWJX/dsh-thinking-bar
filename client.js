@@ -248,6 +248,37 @@ window.__ModuleLoader__.load({
     return -1
   }
 
+  // 关闭档的 id 未必叫 'off'：自定义 provider 可能用 none / 关闭 / 无，
+  // 也可能只给 name 不给 id。只认 id 会让"一键关思考"在那些模型上静默失效
+  // （offIndex 变 -1，闪电按钮的落点和 powerOn 判断全歪）。
+  var OFF_ALIASES = ['off', 'none', '关闭', '无', 'disabled', 'disable']
+
+  function normalizeLevelKey(value) {
+    return String(value == null ? '' : value)
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '')
+  }
+
+  function isOffLevel(level) {
+    if (!level) return false
+    var id = normalizeLevelKey(level.id)
+    var name = normalizeLevelKey(level.name)
+    for (var i = 0; i < OFF_ALIASES.length; i++) {
+      var alias = normalizeLevelKey(OFF_ALIASES[i])
+      if (id === alias || name === alias) return true
+    }
+    return false
+  }
+
+  function findOffIndex(levels) {
+    if (!levels || !levels.length) return -1
+    for (var i = 0; i < levels.length; i++) {
+      if (isOffLevel(levels[i])) return i
+    }
+    return -1
+  }
+
   function levelName(id) {
     return CANON_NAMES[id] || id || ''
   }
@@ -1972,7 +2003,7 @@ window.__ModuleLoader__.load({
       var tone = props.tone || 'dark'
       if (artTheme) colors = themeColors(visual, tone)
       var currentIndex = indexOfLevel(levels, preview)
-      var offIndex = indexOfLevel(levels, 'off')
+      var offIndex = findOffIndex(levels)
 
       useEffect(
         function () {
@@ -1996,7 +2027,7 @@ window.__ModuleLoader__.load({
       )
       var firstOnIndex = -1
       for (var fi = 0; fi < levels.length; fi++) {
-        if (levels[fi].id !== 'off') {
+        if (!isOffLevel(levels[fi])) {
           firstOnIndex = fi
           break
         }
@@ -2004,7 +2035,7 @@ window.__ModuleLoader__.load({
       var currentLevel = currentIndex >= 0 ? levels[currentIndex] : null
       var currentColor = currentLevel ? colorAt(levels, currentIndex, colors) : colors[0] || '#8a93a3'
       var hasLevels = levels.length > 0
-      var powerOn = !!(currentLevel && currentLevel.id !== 'off')
+      var powerOn = !!(currentLevel && !isOffLevel(currentLevel))
       var currentLabel = currentLevel
         ? isLiang
           ? LIANG_NAMES[clamp(currentIndex, 0, LIANG_NAMES.length - 1)]
@@ -2030,11 +2061,14 @@ window.__ModuleLoader__.load({
           top: 'auto'
         })
       }
-      var canPower = hasLevels && !props.busy && (powerOn ? offIndex >= 0 : firstOnIndex >= 0)
-      var canReset = hasLevels && !props.busy
+      // 写入期间不再冻结档位操作：commitSerial 已经能吸收连点（同档位合并在途、
+      // 不同档位排队只留最后一次），再拦一道只会让手感变钝，而且乐观更新之后
+      // 界面本来就是即时响应的，没必要锁住。
+      var canPower = hasLevels && (powerOn ? offIndex >= 0 : firstOnIndex >= 0)
+      var canReset = hasLevels
 
       function switchToModel() {
-        if (props.busy || props.modelLocked) return
+        if (props.modelLocked) return
         setPane('model')
       }
 
@@ -2138,7 +2172,6 @@ window.__ModuleLoader__.load({
                           type: 'button',
                           className: 'teff-modelLine',
                           onClick: switchToModel,
-                          disabled: props.busy,
                           title: props.modelName,
                           'aria-haspopup': 'menu'
                         },
@@ -2178,7 +2211,6 @@ window.__ModuleLoader__.load({
                       assets: props.assets,
                       current: props.current,
                       visual: visual,
-                      disabled: props.busy,
                       onCommit: props.onCommit,
                       onLevelChange: function (id) {
                         setPreview(id)
@@ -2300,6 +2332,8 @@ window.__ModuleLoader__.load({
     resolvePalette: resolvePalette,
     colorAt: colorAt,
     indexOfLevel: indexOfLevel,
+    isOffLevel: isOffLevel,
+    findOffIndex: findOffIndex,
     levelName: levelName,
     levelLabel: levelLabel,
     hexToRgb: hexToRgb,
@@ -2765,35 +2799,51 @@ function ModelSeat(props) {
     if (official) reasoning = official
   }
   const levels = (reasoning && reasoning.efforts) || []
+  // 宿主在模型切换 / 目录刷新 / 模型版本更新时会瞬时丢掉 efforts（实测 2026-10-17
+  // 模型更新后，松手那一刻 efforts 会变成空数组）。那一帧若直接按空数组渲染，
+  // 滑条会塌成 0 档、点击落点也无处可去。这里沿用上一帧非空的档位，
+  // 等目录恢复后再自然跟上。
+  const levelsRef = React.useRef(levels)
+  if (levels.length) levelsRef.current = levels
+  const liveLevels = levels.length ? levels : levelsRef.current
   const fallbackEffort = reasoning ? reasoning.defaultEffort : undefined
   const effort = (current && current.reasoningEffort) || fallbackEffort
-  const effortIndex = levels.findIndex(function (level) {
+  const effortIndex = liveLevels.findIndex(function (level) {
     return level.id === effort
   })
   // 官方触发器在"模型有档位但还没选过"时显示 Default；
   // 我们同一语义用「默认」，否则芯片上什么都不显示，像是没有推理等级。
   const effortName =
-    levelNameFor(prefs.visual, levels, effortIndex) ||
-    (levels.length ? '默认' : undefined)
+    levelNameFor(prefs.visual, liveLevels, effortIndex) ||
+    (liveLevels.length ? '默认' : undefined)
   const colors = colorsFor(prefs.visual, prefs.palette, prefs.custom, tone)
   const effortColor =
-    effortIndex >= 0 ? CORE.colorAt(levels, effortIndex, colors) : undefined
+    effortIndex >= 0 ? CORE.colorAt(liveLevels, effortIndex, colors) : undefined
   const modelName = (model && model.name) || (current ? current.model : '模型')
   // 乐观更新期间不转圈：名字已经先切过去了，再转圈只会显得慢。
+  // 切档位也走乐观值，所以正常路径上 busy 基本不会为真；
+  // 它现在只剩一个用途——目录还没给出任何档位时（liveLevels 为空）避免误操作。
   const busy = state.pending !== null && !optimistic
   const errorText = localError || (state.error && (state.error.message || String(state.error)))
 
+  // 乐观值是否已被目录采纳：切模型比 provider/model；切档位还必须再比 reasoningEffort。
+  // 少了后一项，只改档位时 provider/model 本来就相等，会被当成「目录已追上」而立刻撤掉，
+  // 显示又跳回旧档位——乐观更新等于没做。
+  const sameAsOptimistic = function (value, target) {
+    if (!value || !target) return false
+    if (value.provider !== target.provider) return false
+    if (value.model !== target.model) return false
+    if (target.reasoningEffort === undefined) return true
+    return value.reasoningEffort === target.reasoningEffort
+  }
+
   // 官方目录追上来了就撤掉乐观值；追不上也要撤：
-  // select 已经落定（pending 为空）却始终没变成新模型时，2.5 秒后回退到目录里的真值，
+  // select 已经落定（pending 为空）却始终没变成新值时，2.5 秒后回退到目录里的真值，
   // 免得触发按钮一直挂着一个错名字。
   React.useEffect(
     function () {
       if (!optimistic) return
-      if (
-        state.current &&
-        state.current.provider === optimistic.provider &&
-        state.current.model === optimistic.model
-      ) {
+      if (sameAsOptimistic(state.current, optimistic)) {
         setOptimistic(null)
         return
       }
@@ -2801,16 +2851,21 @@ function ModelSeat(props) {
       const wait = Math.max(0, 2500 - (Date.now() - optimisticAt))
       const timer = setTimeout(function () {
         setOptimistic(function (value) {
-          return value && value.provider === optimistic.provider && value.model === optimistic.model
-            ? null
-            : value
+          return sameAsOptimistic(value, optimistic) ? null : value
         })
       }, wait)
       return function () {
         clearTimeout(timer)
       }
     },
-    [state.current && state.current.provider, state.current && state.current.model, state.pending, optimistic, optimisticAt]
+    [
+      state.current && state.current.provider,
+      state.current && state.current.model,
+      state.current && state.current.reasoningEffort,
+      state.pending,
+      optimistic,
+      optimisticAt
+    ]
   )
 
 
@@ -2882,6 +2937,11 @@ function ModelSeat(props) {
     }
   }
 
+  // select() 若一直不 resolve，state.pending 会一直非空：写入永远悬着、乐观值
+  // 也永远等不到目录追上。给写入加一道超时：超时按失败上报，
+  // 让乐观值走回退分支，界面回到真值。
+  const COMMIT_TIMEOUT_MS = 10000
+
   const commit = function (selection, options) {
     const surface = options && options.toast === true
     const report = function (message) {
@@ -2897,25 +2957,79 @@ function ModelSeat(props) {
       return Promise.resolve(false)
     }
     if (promise && typeof promise.then === 'function') {
-      return promise.then(
-        function (result) {
-          if (result && result.ok === false) {
-            report(
-              result.error && result.error.message
-                ? result.error.message
-                : '切换失败'
-            )
-            return false
-          }
-          return true
-        },
-        function (error) {
-          report(error && error.message ? error.message : String(error))
-          return false
+      return new Promise(function (resolve) {
+        let settled = false
+        let timer = null
+        const finish = function (ok, message) {
+          if (settled) return
+          settled = true
+          if (timer) clearTimeout(timer)
+          if (!ok && message) report(message)
+          resolve(ok)
         }
-      )
+        timer = setTimeout(function () {
+          finish(false, '切换超时，请重试')
+        }, COMMIT_TIMEOUT_MS)
+        promise.then(
+          function (result) {
+            if (result && result.ok === false) {
+              finish(
+                false,
+                result.error && result.error.message
+                  ? result.error.message
+                  : '切换失败'
+              )
+              return
+            }
+            finish(true)
+          },
+          function (error) {
+            finish(false, error && error.message ? error.message : String(error))
+          }
+        )
+      })
     }
     return Promise.resolve(true)
+  }
+
+  // 连点去重：同一档位在途时直接复用同一个 promise；不同档位在途时只记
+  // 最后一次，等前一次落定后再补发一次，避免多次 select 互相覆盖、
+  // 最终落定的档位和用户最后点的不一致。
+  const commitQueueRef = React.useRef({ key: null, promise: null, queued: null })
+
+  const commitKeyOf = function (selection) {
+    return [
+      selection && selection.provider,
+      selection && selection.model,
+      selection && selection.reasoningEffort
+    ].join('\u0000')
+  }
+
+  const commitSerial = function (selection, options) {
+    const slot = commitQueueRef.current
+    const key = commitKeyOf(selection)
+    if (slot.promise) {
+      if (slot.key === key) return slot.promise
+      slot.queued = { selection: selection, options: options }
+      return slot.promise
+    }
+    const start = function (nextSelection, nextOptions) {
+      const nextKey = commitKeyOf(nextSelection)
+      const raw = commit(nextSelection, nextOptions)
+      // 存"包装后"的 promise：同档位连点时复用的必须是同一个对象，
+      // 调用方 await 到的时序也和队列排空保持一致。
+      const wrapped = raw.then(function (ok) {
+        const queued = commitQueueRef.current.queued
+        commitQueueRef.current = { key: null, promise: null, queued: null }
+        if (!queued) return ok
+        return start(queued.selection, queued.options).then(function () {
+          return ok
+        })
+      })
+      commitQueueRef.current = { key: nextKey, promise: wrapped, queued: null }
+      return wrapped
+    }
+    return start(selection, options)
   }
 
   // 模型列表里渲染官方 `conversation.input.model.label` 子插槽（官方的 1017 之类的
@@ -2963,7 +3077,7 @@ function ModelSeat(props) {
         groups: groups,
         currentProvider: current ? current.provider : undefined,
         currentModel: current ? current.model : undefined,
-        levels: levels,
+        levels: liveLevels,
         effortName: effortName,
         current: effort,
         colors: colors,
@@ -2984,10 +3098,23 @@ function ModelSeat(props) {
         fixedPos: fixedPos,
         onCommit: function (id) {
           if (!current) return
-          commit({
+          // 档位也和切模型一样乐观：先把档位名切过去，select 在后台跑。
+          // 否则 effortName 读的还是旧值，busy 又为真，用户看到的就是
+          // "点了 High、字还是 Low、旁边转个圈"。
+          const selection = {
             provider: current.provider,
             model: current.model,
             reasoningEffort: id
+          }
+          setOptimisticAt(Date.now())
+          setOptimistic(selection)
+          commitSerial(selection).then(function (ok) {
+            if (ok) return
+            // 只撤掉"还停在这次选择上"的乐观值：连点时前一次失败不能把
+            // 后一次已经生效的显示一起清掉。
+            setOptimistic(function (value) {
+              return sameAsOptimistic(value, selection) ? null : value
+            })
           })
         },
         onPickModel: function (group, picked) {
@@ -3010,7 +3137,10 @@ function ModelSeat(props) {
             },
             { toast: true }
           ).then(function (ok) {
-            if (!ok) setOptimistic(null)
+            if (ok) return
+            setOptimistic(function (value) {
+              return value && value.provider === group.id && value.model === picked.id ? null : value
+            })
           })
         },
         onClose: function () {

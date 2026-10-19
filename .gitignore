@@ -21,6 +21,9 @@ lib/knowledge.js
 # npm pack output
 *.tgz
 
+# 本地 npm 缓存（默认缓存目录被沙箱拦时改指到工作区内）
+.npm-cache/
+
 # 本地 npm 凭据（发布用 token，绝不入仓）
 .npmrc
 .npmtoken
