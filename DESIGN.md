@@ -66,6 +66,7 @@ icon.svg / icon-v2.svg    图标（两份内容相同，package.json 用 icon-v2
 tools/build-plugin.mjs    拼接器
 tools/shoot-preview.mjs   重拍 README 截图（驱动 headless Edge 的 CDP，见 §8.2）
 docs/screenshots/         README 引用的截图（由 shoot-preview.mjs 生成）
+鲸鱼娘/*.jpg              原始出图素材（入库留源；成品 webp 见 preview/assets）
 test/smoke-corner-shape.mjs   圆角超椭圆回归（8 条）
 test/smoke-slider-visual.mjs  滑杆视觉回归（19 条）
 preview/                  离线预览（见 §8）
@@ -473,6 +474,7 @@ preview/app.js            预览逻辑，自带 PREVIEW_MODEL / PREVIEW_LEVELS�
 preview/build-theme.mjs   从 app.asar 抽取主题 CSS + corner-shape 全局规则 → vendor/dsh-theme.css
 preview/build-react.mjs   复制 React 到 vendor/react-bundle.js
 preview/assets/*.webp     22 张立绘素材（构建时会内联进 client.js）
+鲸鱼娘/*.jpg              原始出图素材（入库留源，重压 webp 时可回溯）
 ```
 
 预览页支持 URL 参数直接开到指定状态，不必手点：

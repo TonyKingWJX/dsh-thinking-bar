@@ -6,8 +6,8 @@ node_modules/
 .dsh-scratch.txt
 b6-dump.txt
 
-# 原始出图素材（体积大、非仓库必需）；成品 webp 见 preview/assets
-鲸鱼娘/
+# 原始出图素材入仓（可追溯，重出 webp 有源可查）；成品 webp 见 preview/assets
+# 只有设计软件的工程文件留在外面
 *.psd
 *.ai
 
