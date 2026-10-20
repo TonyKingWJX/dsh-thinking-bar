@@ -2,10 +2,8 @@
 
 ## 1.0.6 — 2026-10-20
 
-**修复**
-
-- `lib/ui.js` 行尾由 CRLF 统一为 LF，新增 `.gitattributes`（`* text=auto eol=lf`）约束后续提交。此前 `client.js` 内混用两种行尾（2728 行 CRLF + 1208 行纯 LF），功能无影响，但打包产物字节不整洁。重新构建后 `client.js` 由 1,916,748 B 变为 1,914,020 B，内容逐字节等价（git blob 哈希与改动前完全一致）。
-- README 的「安装」一节补回 npm 安装方式（`dsh plugin --profile desktop add dsh-thinking-bar`），并保留图形界面、GitHub 命令行、手动改 profile 三种方式。
+- 修复已知问题。
+- 新增 npm 安装方式。
 
 ## 1.0.5 — 2026-10-20
 
