@@ -13,7 +13,7 @@ try {
 const NS = 'thinking-bar'
 const STORE_KEY = 'dsh-thinking-bar.prefs.v1'
 const DEFAULT_PREFS = {
-  mode: 'official',
+  mode: 'codex',
   visual: 'codex',
   palette: 'codex',
   custom: CORE.DEFAULT_CUSTOM.slice()
@@ -110,13 +110,24 @@ function useTone() {
 
 function levelNameFor(visual, levels, index) {
   if (index < 0 || index >= levels.length) return undefined
-  if (visual === 'liang') return CORE.LIANG_NAMES[Math.min(index, CORE.LIANG_NAMES.length - 1)]
-  return CORE.levelLabel(levels[index].id, levels[index].name)
+  // 统一走 CORE.displayLabelOf：Default 格固定显示 Default，梁系命名按真实档位排位
+  // 取（Default 不占梁序号），插了 Default 之后设置页预览也不会错位。
+  return CORE.displayLabelOf(levels, index, visual === 'liang')
 }
 
+/* 文字用色：每一档都顶到 4.5:1，保证标签和大标题在任何背景上都读得清。 */
 function colorsFor(visual, palette, custom, tone) {
   if (CORE.THEME_VISUALS.indexOf(visual) >= 0) return CORE.themeColors(visual, tone)
   return CORE.resolvePalette(palette, custom, tone)
+}
+
+/* 填充用色：调色板原色。
+ * 以前填充直接复用 colorsFor，于是 #38BDF8 这种亮蓝被拉去满足文字对比度、
+ * 压成灰蓝，整条滑杆发闷——那是"为文字服务"的色，不该拿来涂色面。
+ * 鲸鱼娘/梁圣的主题色本来就是原色，两条路径取到的是同一组。 */
+function fillColorsFor(visual, palette, custom, tone) {
+  if (CORE.THEME_VISUALS.indexOf(visual) >= 0) return CORE.themeColors(visual, tone)
+  return CORE.fillPalette(palette, custom)
 }
 
 function SettingsSection(props) {
@@ -125,11 +136,19 @@ function SettingsSection(props) {
   const previewState = React.useState('high')
   const preview = previewState[0]
   const setPreview = previewState[1]
-  const levels = CORE.CANON.map(function (id) {
-    return { id: id, name: CORE.levelLabel(id, id) }
-  })
+  // 设置页预览用的是一组"像真的"档位：Default 打头，后面接真实的强度档。
+  // 不含 off —— 现在的模型多数在目录里没有 off 档，真正需要 Default 的正是这种模型，
+  // 预览要照这个情形显示，否则用户在这里看不到自己真正会遇到的样子。
+  const levels = [CORE.DEFAULT_LEVEL].concat(
+    CORE.CANON.filter(function (id) {
+      return id !== 'off'
+    }).map(function (id) {
+      return { id: id, name: CORE.levelLabel(id, id) }
+    })
+  )
   const isArt = CORE.THEME_VISUALS.indexOf(prefs.visual) >= 0
   const colors = colorsFor(prefs.visual, prefs.palette, prefs.custom, tone)
+  const fillColors = fillColorsFor(prefs.visual, prefs.palette, prefs.custom, tone)
   const showVisual = prefs.mode === 'codex'
 
   const card =
@@ -142,6 +161,7 @@ function SettingsSection(props) {
           levels: levels,
           current: preview,
           colors: colors,
+          fillColors: fillColors,
           visual: prefs.visual,
           assetBase: '',
           assets: ASSETS,
@@ -311,7 +331,7 @@ function SettingsSection(props) {
       'div',
       { className: 'tb-palettes' },
       CORE.PALETTES.map(function (entry) {
-        const swatches = CORE.resolvePalette(entry.id, prefs.custom, tone)
+        const swatches = CORE.fillPalette(entry.id, prefs.custom)
         return React.createElement(
           'button',
           {
@@ -456,18 +476,33 @@ function ModelSeat(props) {
   // 等目录恢复后再自然跟上。
   const levelsRef = React.useRef(levels)
   if (levels.length) levelsRef.current = levels
-  const liveLevels = levels.length ? levels : levelsRef.current
+  const rawLevels = levels.length ? levels : levelsRef.current
   const fallbackEffort = reasoning ? reasoning.defaultEffort : undefined
-  const effort = (current && current.reasoningEffort) || fallbackEffort
+  // 官方只在模型没有 defaultEffort 时才给"provider 默认"那一行空值项
+  // （docs/official-ui-notes.md:297-312）；有 defaultEffort 的模型官方不插，
+  // 我们也不插，芯片文字直接走 defaultEffort 对应的那个真实档位。
+  const canFollowDefault = rawLevels.length > 0 && fallbackEffort === undefined
+  const liveLevels = CORE.withDefaultLevel(rawLevels, canFollowDefault)
+  const rawEffort = (current && current.reasoningEffort) || fallbackEffort
+  // 空档位（没选过，或 provider 明确交回默认）落到 Default 那一格上。
+  // 不用空串/null 当哨兵：indexOfLevel 是严格比较，会和"真没有档位"混在一起。
+  const effort =
+    canFollowDefault && (rawEffort === undefined || rawEffort === null || rawEffort === '')
+      ? CORE.DEFAULT_LEVEL_ID
+      : rawEffort
   const effortIndex = liveLevels.findIndex(function (level) {
     return level.id === effort
   })
-  // 官方触发器在"模型有档位但还没选过"时显示 Default；
-  // 我们同一语义用「默认」，否则芯片上什么都不显示，像是没有推理等级。
+  // 官方触发器在"模型有档位但还没选过"时显示 Default；这里直接给那一格的真实名字，
+  // 不再自己发明中文「默认」——两者语义相同，但用户看到的名字要和官方一致。
   const effortName =
-    levelNameFor(prefs.visual, liveLevels, effortIndex) ||
-    (liveLevels.length ? '默认' : undefined)
+    effortIndex >= 0
+      ? CORE.displayLabelOf(liveLevels, effortIndex, prefs.visual === 'liang')
+      : liveLevels.length
+        ? 'Default'
+        : undefined
   const colors = colorsFor(prefs.visual, prefs.palette, prefs.custom, tone)
+  const fillColors = fillColorsFor(prefs.visual, prefs.palette, prefs.custom, tone)
   const effortColor =
     effortIndex >= 0 ? CORE.colorAt(liveLevels, effortIndex, colors) : undefined
   const modelName = (model && model.name) || (current ? current.model : '模型')
@@ -480,12 +515,23 @@ function ModelSeat(props) {
   // 乐观值是否已被目录采纳：切模型比 provider/model；切档位还必须再比 reasoningEffort。
   // 少了后一项，只改档位时 provider/model 本来就相等，会被当成「目录已追上」而立刻撤掉，
   // 显示又跳回旧档位——乐观更新等于没做。
+  //
+  // Default 这一格要特别处理：提交时不发 reasoningEffort，目录回给我们的就是
+  // undefined/空。若还按 === 硬比，Default 的乐观值一设上就立刻被判成"已追上"而撤掉，
+  // 芯片会先闪回旧档位再跳 Default，就是"点一下顿一下"。
+  // 所以两边都先归一：Default / 空 / null / undefined 一律折算成 null 再比。
+  const effortKeyOf = function (value) {
+    if (value === CORE.DEFAULT_LEVEL_ID) return null
+    if (value === undefined || value === null || value === '') return null
+    return value
+  }
+
   const sameAsOptimistic = function (value, target) {
     if (!value || !target) return false
     if (value.provider !== target.provider) return false
     if (value.model !== target.model) return false
     if (target.reasoningEffort === undefined) return true
-    return value.reasoningEffort === target.reasoningEffort
+    return effortKeyOf(value.reasoningEffort) === effortKeyOf(target.reasoningEffort)
   }
 
   // 官方目录追上来了就撤掉乐观值；追不上也要撤：
@@ -649,11 +695,11 @@ function ModelSeat(props) {
   const commitQueueRef = React.useRef({ key: null, promise: null, queued: null })
 
   const commitKeyOf = function (selection) {
-    return [
-      selection && selection.provider,
-      selection && selection.model,
-      selection && selection.reasoningEffort
-    ].join('\u0000')
+    // Default 的 selection 不带 reasoningEffort（见 onCommit），直接 join 会得到
+    // 结尾一个空段；显式标成字符串，免得和任何"档位名恰好为空"的情况撞键。
+    const effort =
+      selection && selection.reasoningEffort ? selection.reasoningEffort : '__default__'
+    return [selection && selection.provider, selection && selection.model, effort].join('\u0000')
   }
 
   const commitSerial = function (selection, options) {
@@ -732,6 +778,7 @@ function ModelSeat(props) {
         effortName: effortName,
         current: effort,
         colors: colors,
+        fillColors: fillColors,
         visual: prefs.visual,
         assetBase: '',
         assets: ASSETS,
@@ -752,19 +799,28 @@ function ModelSeat(props) {
           // 档位也和切模型一样乐观：先把档位名切过去，select 在后台跑。
           // 否则 effortName 读的还是旧值，busy 又为真，用户看到的就是
           // "点了 High、字还是 Low、旁边转个圈"。
-          const selection = {
+          //
+          // Default 那格要翻译成"省略 reasoningEffort"（官方 chooseEffort 同款，
+          // 见 docs/official-ui-source-notes.md:49）：官方把它当成"交回 provider 默认"，
+          // 发一个不存在的档位 id 会被 Host 拒掉。
+          // 乐观值里显式写 null 而不是省略字段，免得 sameAsOptimistic 认不出这是 Default。
+          const isDefault = id === CORE.DEFAULT_LEVEL_ID
+          const selection = isDefault
+            ? { provider: current.provider, model: current.model }
+            : { provider: current.provider, model: current.model, reasoningEffort: id }
+          const optimisticValue = {
             provider: current.provider,
             model: current.model,
-            reasoningEffort: id
+            reasoningEffort: isDefault ? null : id
           }
           setOptimisticAt(Date.now())
-          setOptimistic(selection)
+          setOptimistic(optimisticValue)
           commitSerial(selection).then(function (ok) {
             if (ok) return
             // 只撤掉"还停在这次选择上"的乐观值：连点时前一次失败不能把
             // 后一次已经生效的显示一起清掉。
             setOptimistic(function (value) {
-              return sameAsOptimistic(value, selection) ? null : value
+              return sameAsOptimistic(value, optimisticValue) ? null : value
             })
           })
         },
@@ -843,7 +899,7 @@ const PAGE_CSS = `
 .tb-ackLead{color:var(--dsw-alias-label-secondary)}
 .tb-ackList{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none}
 .tb-ackList>li{position:relative;padding-left:14px}
-.tb-ackList>li::before{content:'';position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.32}
+.tb-ackList>li::before{content:'';position:absolute;left:2px;top:9px;width:5px;height:5px;corner-shape:round;border-radius:50%;background:currentColor;opacity:.32}
 .tb-ackLink{color:var(--dsw-alias-state-business-primary);text-decoration:none;border-bottom:1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 40%, transparent);padding-bottom:1px;transition:border-color .15s,color .15s}
 .tb-ackLink:hover{border-bottom-color:currentColor}
 .tb-intro{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}

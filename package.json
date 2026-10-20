@@ -1,6 +1,6 @@
 {
   "name": "dsh-thinking-bar",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Switchable model/reasoning UI for the DSH composer; reasoning levels come from the system model catalog.",
   "type": "module",
   "keywords": [

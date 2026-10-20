@@ -567,13 +567,11 @@
       [paletteId, customKey, tone]
     )
 
+    // 填充取调色板原色，跟真机走同一个函数（真机是 fillColorsFor → CORE.fillPalette）。
+    // 以前这里自己遍历 PALETTES 抄了一遍，真机改了配色后两边就会对不上。
     var fillColors = useMemo(
       function () {
-        if (paletteId === 'custom') return custom.slice()
-        for (var pi = 0; pi < CORE.PALETTES.length; pi++) {
-          if (CORE.PALETTES[pi].id === paletteId) return CORE.PALETTES[pi].colors.slice()
-        }
-        return CORE.PALETTES[0].colors.slice()
+        return CORE.fillPalette(paletteId, custom)
       },
       [paletteId, customKey]
     )

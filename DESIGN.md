@@ -1,177 +1,516 @@
-# dsh-thinking-effort 插件设计文档（v1.1，2026-10-15，已吸收 docs/review-notes.md 评审 R1-R12）
+# dsh-thinking-bar 设计文档（v2.0，2026-10-20）
 
-> 本文档是团队共同参照。所有成员以本文件为唯一事实来源，行号锚点指向 DSH 安装 bundle：
-> `D:\Apps\Users\wang\AppData\Local\Programs\DeepSeek Harness\resources\app.asar`（约 230 万行，未混淆；用 grep 工具按行号检索，勿用 read 读 asar——会报 BigInt 错误；pwsh 在本会话环境不可用）。
-
-## 0. 用户需求（验收标准）
-
-1. 自定义 API（自定义 baseURL 的 provider）下的模型可以调整思考强度。
-2. 对话框触发器与官方完全一致：模型名旁小字档位 chip + 下拉箭头（如 `DeepSeek-V4.1-Flash High ⌄`），无多余框。
-3. 档位选择弹层与 Codex 对齐：居中显示模型名 + 下方小字当前档位名（用户 m02779 定稿「读法 A」）；下方胶囊形滑杆分档、节点吸附，最左端常驻 `off` 节点；左上闪电图标（思考开/关，右上「重置为默认档」已按用户 m05286 删除）。
-4. 档位越高动画越强（用户 m01895 定稿，取代旧「仅最大档」）：滑杆蓝→紫渐变 + 星空粒子 + 最高档附「更快消耗使用额度」提示。
-5. 自动接管：已配置模型生效，未来新增配置也自动生效。
-6. 设置页：总开关（启用/禁用、接管/不接管）；per-provider/per-model 档位编辑（勾选档位 + 每档 wire 值重命名）；能力探测开关。
-7. UI 全新实现（不 fork 现有插件），默认档位策略 = 知识库默认 → 上游探测（可选）→ 用户手动覆盖（最高优先）。
-
-## 1. 根因与数据通路（已逆向确认）
-
-- 自定义 provider 配置存于 settings namespace `llm-pi-ai`，路径 `llm-pi-ai.providers.<route>.models.<model-id>`（asar:479130「Only pi-ai routes can be hand-declared — the custom-API form writes into llm-pi-ai」）。
-- 官方表单**刻意**不暴露 reasoningEfforts 字段（asar:479051 原文 "Reasoning effort is deliberately not among the editable fields: it is a per-model capability"）——但 zod schema 完整支持（860404/860411），写入即生效。插件补写正是官方留出的正确入口。
-- 解析链（asar:859970-859991 `resolveModelReasoning(provider, entry, base)`）：
-  - `entry.reasoningEfforts === void 0` → `{ reasoning: base?.reasoning ?? false }`（回退已安装目录；自定义 provider 无 base → 无档位 → 选择器不出现）。
-  - `reasoningEfforts: false` → 明确声明非推理模型。
-  - 空 dict / 非 off 档缺 wire 值 / 空字符串 wire 值 / 只声明 off → 校验报错（859974/859980/859981/859982，`PiAiCatalogError`）。
-- 成功路径产出 `{ reasoning: true, thinkingLevelMap: map }`（859991）；`getSupportedThinkingLevels`（860156-161 / 1104454-4468）读 thinkingLevelMap 生成 efforts；`reasoningInfo`（861129-136）产出 `{efforts:[{id,name}], defaultEffort?}`。
-- 分派：`model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort`（1096958 等）；off 仅当 `thinkingLevelMap.off !== null` 时下发（1096866-6961）。
-- **THINKING_LEVELS = off / minimal / low / medium / high / xhigh / max**（859699）。每档值 = wire 字符串或 `null`（不支持）；可重命名（如 `"max": "ultra"`）。`reasoningEfforts` 的 dict 键用 THINKING_LEVELS 键集。
-- 刷新链：配置写入 → `llm/adapters-updated`（无 payload，863508）+ `settings/document-updated` → Web 端 ModelCatalogDirectory（435288 ctx.remote.$on）、Models 设置页（479087/483338）、模型选择器自动 refetch，**无需重启**。
-- Host 校验（写入错误数据才会触发）：efforts 空 → INVALID_MODEL_REASONING；defaultEffort 不在 efforts → 同左；请求档不在 efforts → UNSUPPORTED_REASONING_EFFORT（865819-870）。
-
-## 2. 数据层规范（Host 半侧 lib/index.js）
-
-- **配置树路径（已证实）**：`llm-pi-ai.config.providers.<providerId>.models.<modelId>.reasoningEfforts`（settingsPath 861924 `["providers", provider]`；与实机 cordis.patch.yml 中已有 provider 的 models[].reasoningEfforts 形状完全吻合）。形状吻合，但持久化落点分两层：settings.mutate → settings.yaml（971821/972302）；configEditor → cordis.patch.yml。两层合并优先级 [未验证]，**第一版只用 settings.mutate 单通道**（R1）。
-- **写入机制（v2.1 修订，评审 R1 后）**：第一版**只走 `settings.mutate('llm-pi-ai', ops, expectedRevision)`**（JSON 路径操作，语义干净、可回滚、错误码明确）；必须**单写者队列**（同 ns 同时只有一个 in-flight 写）+ **永远带 expectedRevision**（实时取自 settings.describe，禁止缓存跨写周期）+ **conflict 后重算重试 ≤3 次退避 100/300/900ms** + **写后 resolveModelInfo 自检**（断言 efforts/defaultEffort 生效，不符告警不重试）。configEditor 留到 §7.2 full-replace 不确定性清零后再启用（届时加「通道锁」配置，运行期只允许一条通道活跃）。
-- **扫描（v2.1 准入三条件，R2）**：读 llm-pi-ai user 层全部 `providers.<route>.models.*`，仅当 **reasoning===true 且 thinkingLevelMap 已存在 且 目标档在 map 中非 null** 时才补写。删除「未声明但疑似推理」猜测分支——写任何 dict 都会把 reasoning 钉为 true（859990），会误伤 reasoning:false 模型。
-- **三级能力瀑布**：
-  1. 内置知识库（静态表，按厂商/模型名匹配；条目结构含 `'inherit'` 表达「缺键兜底不写键」（R10）：claude 系 = `{off:null, xhigh:'xhigh', max:'max', low:'inherit', medium:'inherit', high:'inherit'}`；含各家 ladder 差异：如 hy3=noThink、minimax-m3=none、mimo/qwen 拒 max、GLM 无 minimal、DeepSeek V4.1 Flash 官方目录 = low/high/max）。
-  2. 连通性/模型存在性探测（默认关闭；`llm.discoverModels` 结构上不携带 reasoningEfforts（859022/859269），探测只回答「route 通不通、有哪些模型 id」，不回答档位（R7）；「非法 effort 报错解析」旁路标注实验性，默认关，只在用户显式点击时触发）。
-  3. 用户手动勾选（设置页，最高优先级，永远覆盖前两级）。
-- **默认保守档位（v2.1，R3）**：只在「整个 map 不存在」且过准入三条件时使用四键保守档 `off:null, low:"low", high:"high", max:"max"`。已声明 dict 会展开成 7 档全量 map（未声明档位显式 null，859983-987）；已有 map 的模型补写必须是 **merge**：保留全部已有键，仅 `existing[k]===undefined` 时写知识库值，绝不 unset 用户键。
-- **off 档三态（R4）**：null（UI 不展示、不下发）/ 缺键（UI 展示、多数适配器下发硬编码 "none"）/ 字符串（按 wire 下发）行为完全不同。补写时**保留现有 off 状态**（缺键就继续缺键）；内部建模用三态枚举 `{kind:'null'|'absent'|'wire'}；档位可用性判定逐字复刻 860158-861161`。
-- **自动接管（v2.1，R6）**：监听 `settings/document-updated`（签名 (ns, revision)，1017934-36；带 revision 载荷用于回执抑制）+ `llm/adapters-updated`（无 payload，863508）。必须做：回执抑制（`ns==='llm-pi-ai' && revision<=lastSelfWrite.revision` 直接 return）、300ms 去抖合并、provider 签名去重、事件回调内只置 dirty 不同步写。
-- **YAML 陷阱（v2.1，R5）**：off 键在任何 YAML 落盘点（settings.yaml / cordis.patch.yml）都必须带引号；mutate 只保证内存正确（JsonValue），不保证落盘字形——eemeli stringify 不会给 core-schema 字符串加引号。需启动自检（正则查裸 `off:`）与一键修复。
-- **defaultGuard（R8）**：补写管线终点加**硬断言**：`reasoningEfforts` 落库前必须同时满足 `defaultEffort ∈ offeredLevels` 且 `offeredLevels.length ≥ 1`；不满足就中止该模型补写并进设置页错误列表（防 defaultEffort 双缺失 → 每请求 UNSUPPORTED_REASONING_EFFORT）。客户端 chip 复刻官方三态：`reasoning===undefined → 不显示档位`；`effectiveEffort===undefined → 显示 t("effort.providerDefault")/"Default"`；提交时 `""` 归一为 `undefined`，绝不透传给 `directory.select`。
-- **插件自身配置**存本插件 namespace（总开关、接管模式、探测开关、per-model 覆盖表）。
-
-## 3. UI 层规范（浏览器半侧 lib/client.js，全新实现）
-
-- 装载：`window.__ModuleLoader__.load({ id: '<包名>', factory: (require) => {...} })`；require('react') 手写 createElement；无构建步骤。
-> **§3 已于 2026-10-15 按 UI 细节提取卡（docs/official-ui-notes.md，来源 asar 435210–436189 官方插件
-> `@deepseek-ai/dsh-client-ui-model-selection@0.2.0-rc.2`）逐条校正。下面带 ⚠ 的条目是校正结果，
-> 实现以它们为准，不要再按旧描述写。**
-
-- ⚠ **槽位（校正，关键）**：官方把 chip 注册在 `conversation.input.model`，该槽声明为 **`single` + `scope:'session'`**（asar:421867-421870），在 composer `standardControls` 里紧跟 `conversation.input.right` 之后渲染（asar:421078）。**槽是 single，插件再注册同 id 会与官方座位冲突** → 插件必须用自己的槽 id 或另找挂载点，**不能**直接占用 `conversation.input.model`。挂载点选择在实现卡内定，定前先 `cordis_inspect_query` 读 slots 树确认可用槽。
-- 数据：`ctx.modelDirectories.directoryFor(sessionId).load()` → 可订阅 store（getSnapshot/subscribe，配 useSyncExternalStore）。snapshot 形状：groups[].models[]，model.reasoning.{efforts[],defaultEffort}，state.current.{provider,model,reasoningEffort}。
-- 提交：`directory.select({provider, model, reasoningEffort})`，失败回滚草稿（官方同通路，/model 弹窗与 composer 共用同一份每会话目录）。
-- 触发器 chip（对齐官方 asar:435743-435786 / 435479-435481）：
-  - 结构：根 `div`（**不是 button**）> `button`，内部 4 个 flex 子元素：`IconDataOutlineRegular`(size 16) + `span`(模型名) + ⚠ `span`(档位名，条件渲染) + 右端 `busy ? StateDot({state:'ongoing'}) : IconChevronDownOutlineRegular`（open 时加 chevronOpen）。模型名与档位名是**两个并列 span，DOM 里没有分隔符字符**（只有 title 属性用 ` · ` 拼）。
-  - `effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort`
-  - label：`reasoning===void 0 ? state.retainedEffort : effectiveEffort===void 0 ? t('effort.providerDefault') : reasoning.efforts.find(l=>l.id===effectiveEffort)?.name ?? effectiveEffort`（**name 必须来自服务端 efforts，禁止客户端硬编码档位字典**（R11）；name 缺失才回落 id）。
-  - ⚠ **粘滞档位**：切到非推理模型时 chip 仍显示上一个模型残留的档位名（`state.retainedEffort`，asar:435235-435239），不是隐藏 —— 复刻它，否则切模型时 chip 会跳变。
-  - ⚠ **「默认」项只在模型未声明 defaultEffort 时出现**：仅当 `reasoning.defaultEffort === void 0` 时官方在列表头插入 `{key:'provider-default', effort:void 0, label:t('effort.providerDefault')}`（asar:435481-435489）；提交时 `undefined` 档位**不带** `reasoningEffort` 字段（asar:435715-435726）。i18n `effort.providerDefault` 在 zh 与 en 下**都是 "Default"**（asar:436017/436043）；`t('retry')` 是孤儿 key（asar:435874/435886 用了但字典里没有），**别照抄**，用 `action.reload` 风格。
-  - ⚠ **样式修正**：用 `--dsw-alias-*` + `--dsw-menu-surface-fill` + `--dsw-elevation-prominent`。**`--dsw-specific-menu` 与 `--dsw-shadow-lv3` 不要用**（前者是「没有 menu backing 的其他浮层」，后者是别的东西）。官方 trigger **有** hover 背景（`--dsw-alias-interactive-bg-hover`）与 focus-visible 焦点环（`0 0 0 2px var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))`），所以「零自定义外框」的旧说法需按此修正。触发器等宽 28px、`border-radius:var(--dsw-radius-sm)`、`max-width:min(360px,45cqw)`；档位 span 用 `color:var(--dsw-alias-label-caption);flex-shrink:1000`（极端压缩时档位名先被压掉）；窄容器降级靠 `--dsh-composer-model-text-display` / `--dsh-composer-model-icon-display`（asar:403251，默认 block/none，空间不足时反转成只显示图标）。抄官方 class 时一律加 `teff-` 前缀重命名（R12/§2.7）。
-  - ⚠ **token 存在性校正**（推翻 [docs/review-notes.md:668](docs/review-notes.md#L668) 的「不存在」判断）：`--dsw-radius-xs/sm/md/lg/xl/panel`（4/8/12/16/20/28px）、`--dsw-font-family`、`--dsw-focus-ring-width:2px` **都存在**（asar:698051/698057/698060），可放心用。`--dsw-elevation-prominent` = 0.5px 描边 + 3 层阴影（asar:698069）。
-- Codex 弹层：大字行居中模型名（可点回模型列表）+ 下方小字行当前档位名（用户 m02779「读法 A」）；胶囊滑杆（分档节点、吸附、0-1000 草稿值映射 efforts 列表、松手提交最近档且**不关面板**）；左上闪电 = 思考开/关。右上「重置为默认档」已按用户 m05286 删除（最左端常驻 `off` 节点即可回到默认，该按钮是冗余的第二条路径；`RefreshIcon` 与 `onReset` prop 一并移除）。
-  - ⚠ **材质与定位**：用 `MenuSurface` 原语 + `createPortal(..., document.body)`（asar:435787-435794、435980）；材质 = `--dsw-menu-surface-fill` + `backdrop-filter:var(--dsw-menu-backdrop-filter)`（asar:446194-446242）。定位 `position:fixed` 由 JS 从 `trigger.getBoundingClientRect()` 算（`x = rect.right - lw`、MARGIN=12 四周夹逼，asar:435555-435588），监听 `window` 的 `scroll`(**capture:true**) + `resize`；未定位时用 `visibility:hidden;left:0;top:0`。**不要用 data-composer-card 做锚点**（该属性只给 Toast 用）。
-    - ⚠ **必须会向下翻转**（2026-10-16 用户 m04522 定案，推翻上面那条「只 y = rect.top - 8 - lh」的照抄）：官方 chip 永远在窗口底部，只向上弹不会出事；但触发按钮贴近视口顶部时（预览页、窄窗口），只上弹的实现会被 `Math.max(MARGIN, …)` 夹到 `top=12` 贴住顶边、钻进顶部 chrome 的领地 → 就是「有东西会遮挡」。实现 = 纯函数 `menuPlacement({rect,lw,lh,vw,vh,margin,gap})`：`spaceAbove = rect.top - margin - gap`、`spaceBelow = vh - rect.bottom - margin - gap`，`side = (spaceAbove >= lh || spaceAbove >= spaceBelow) ? 'up' : 'down'`，`y = side==='up' ? rect.top-gap-lh : rect.bottom+gap`，最后仍夹进视口；返回 `{left,top,side}`（`side` 供测试断言方向）。**`place()` 只做 DOM 读取，几何全在纯函数里**，否则「翻转」永远测不到。
-  - ⚠ **选中态无背景**：列表项是 `button[role=menuitemradio]` + `aria-checked`，选中项 `background:0 0`（透明），**只由右侧 check 图标表达**（asar:435342）。面板 CSS：`z-index:1100;min-width:min(240px,100vw - 32px);max-width:min(420px,100vw - 32px);max-height:min(360px,100vh - 96px);box-shadow:var(--dsw-elevation-prominent);padding:4px`；选项 `min-height:34px;border-radius:var(--dsw-radius-md)`。
-  - ⚠ **关闭/键盘行为**（必须复刻）：Escape 两级（drilled → back(pane)；根 → close 且要求 `state.current !== null`）；`document.addEventListener('mousedown', closeOutside)` **必须同时检查 rootRef 与 menuRef 两个子树**（菜单在 portal 里）；ArrowUp/Down 移动真实焦点；输入法组合期间 `if (event.nativeEvent.isComposing) return`。
-  - ⚠ **模型列表必须能滚动**（2026-10-16 用户 m05519 定案：列表摊到 `max-height` 就被硬切、看不到后面的 provider 组）：
-    - flex 链路缺一不可：`.teff-menu`（`display:flex;flex-direction:column;overflow:hidden;max-height:min(360px,calc(100vh - 96px))`）→ 中间容器 `.teff-viewport`（`display:flex;flex-direction:column;min-height:0;flex:1 1 auto`）→ 滚动区 `.teff-groups`（`min-height:0;overflow-y:auto;flex:1 1 auto`）。**中间容器不能是裸 `div`**：默认 `min-height:auto` 会让它撑满内容高度，`.teff-groups` 拿不到确定高度 → `overflow-y:auto` 永不激活，内容被 `overflow:hidden` 一刀切。
-    - **双 ref 分工**（对齐官方 asar:435788 的 `menuRef` vs asar:435890 的 `groupsRef`）：`menuRef` 只挂 `.teff-menu`（定位与外部点击判定都读它），`groupsRef` 单独挂 `.teff-groups`。**同一 ref 挂两处**会让 `place()` 量到列表内容高度而非菜单高度。
-    - **键盘高亮自动滚入视野**：`itemRefs.current[activeModelIndex]?.scrollIntoView({block:'nearest'})`（官方 asar:435547-435554 用 `useLayoutEffect`；本插件**只能用 `useEffect`** —— 测试替身的假 React 只实现 5 个 hook）。
-    - **分组标题吸顶**：`.teff-groupLabel{position:sticky;top:0;z-index:1}` + `.teff-groupLabel[data-stuck]{background:var(--dsw-alias-menu-group-header-fill)}`；`data-stuck` 由 `observeStickyMenuGroups(groupsRef.current)`（逐字对齐官方 asar:451945-452023，导出到 `__teff_pure`）用 `IntersectionObserver` + `ResizeObserver` 异步切换 —— **分组成员在 setup 时捕获，分组变化（含筛选）必须 dispose 重建**；无这两个 observer 时直接返回空清理函数，标题保持透明（CSS sticky 仍然生效）。
-    - **无障碍对齐官方 asar:435792**：`pane==='model'` 时外层 `.teff-menu` 的 `role` 是 **`group`**（内层 `.teff-groups` 才是 `role=menu` 的复合菜单），`root`/`effort` pane 用 `menu`。
-- 档位动画（**2026-10-16 用户定稿，取代旧「仅最高档触发」规格**）：**每一档都有粒子动效**；档位越高 → 轨道由蓝渐变为紫（紫端占比 30%→100%）→ 星层越多（1→3 层）→ 越亮（opacity .22→.85）→ 漂移越快（20s→7s）。实现 = 纯函数 `effortVisual(index, count)`（`lib/client.js`，导出到 `__teff_pure`）产出 `{ratio, purpleStop, starLayers, starOpacity, driftSeconds, isTop}`，轨道渐变紫端由 CSS 变量 `--teff-purple-stop` 驱动，星层数决定挂载几个 `span.teff-star--a/b/c`。
-  - ⚠ **档位标签必须与刻度同心**（2026-10-16 用户 m04522「字对不上挡位」定案）：tick、thumb、label 三者共用同一个锚点 `left: sliderOffset(pct)`；其中 tick 与 thumb 自带 `transform:translate(-50%,-50%)` 做居中补偿，**label 此前漏了补偿** → 标签「左边缘」压在刻度「中心」上，整段文字右偏半个自身宽度，宽词（Minimal/Medium）挤住下一个刻度、短词之间留下大空隙，实测最右 `Max` 冲出轨道右端 48px。修法：`.teff-slider__label` 加 `transform:translateX(-50%)`。**新增/移动任何绝对定位在 `sliderOffset` 锚点上的元素，都必须同时确认它有没有居中补偿。**
-  - 「更快消耗使用额度」提示**仍只在最高可用档出现**（`isTop`），因为只有顶档才真的更费额度。
-  - 最高可用档 = `efforts` 按 `LEVEL_ORDER=['off','minimal','low','medium','high','xhigh','max']` 序的**最后一个可用档**（R9：很多模型无 max，可能是 high/xhigh）—— 不是硬编码 `'max'`。档位数完全按服务端 `efforts.length` 渲染。
-  - 性能与降级：星层 CSS 默认 `animation-play-state:paused`，仅 `.teff-popup--open` 下 running；`@media (prefers-reduced-motion:reduce)` 关掉全部漂移/闪烁/过渡，退化为静态渐变。硬编码色值仅限 artwork（星点白/紫、渐变三色 `#2f6bff / #6a5cff / #a855f7`）。完整规格见 docs/review-notes.md §2（DOM 结构/CSS/React 集成/性能预算/自测清单），其中「仅 isMax 挂载」的旧门控已被本条取代。
-
-## 4. 设置页规范（settings.section 槽）
-
-- 一节一页（list 槽，registration: {id, order?, label}）。
-- 内容：总开关（启用/禁用）；接管模式（自动补写 / 仅浮层显示不改配置）；探测开关；per-provider → per-model 档位编辑器（勾选档位、每档 wire 值输入、defaultEffort 选择）；探测结果展示（档位 + 置信度）。
-- 手写 React，参考样例插件 `D:\VibeCoding\DSH\.dsh-probe\startup-screen\package\lib\client.js` 的 settings.section 注册写法。
-
-## 5. 插件骨架约定
-
-- package.json：main=lib/index.js（Host 半侧，导出 name/inject/apply）；exports "./client"→lib/client.js；`dsh.bundle.patch: ./cordis.patch.yml`；`dsh.client.inject` 列出所需平台模块（slots/locale/runtime/api-remotes/dsh-client-ui-model-selection 按需）。
-- cordis.patch.yml：`- insert: [{id: <plugin-id>, name: <包名>}]`。
-- 配置存 `~/.dsh/<plugin-id>.json`（Host 半侧）或插件自身 settings namespace。
-- 参考实现（只读借鉴，代码全新写）：D:\VibeCoding\DSH\.dsh-probe\startup-screen\package\、D:\VibeCoding\DSH\.dsh-probe\out\550c\package\。
-
-## 6. 任务分工与状态
-
-| 卡片 | 模型 | 范围 | 状态 |
-|---|---|---|---|
-| UI 细节提取 | workbuddy-global/deepseek-v4.1-flash | 官方 chip/弹层精确 DOM+token → docs/official-ui-notes.md | ✅ 完成 |
-| 骨架+数据层+设置页 | workbuddy/space-bunny | 插件骨架、settings.mutate 数据层、设置页 | ✅ 完成 |
-| 设计评审+动画方案 | stepfun/step-5-preview | 评审本文件、风险清单、Codex 动画实现规格 → docs/review-notes.md | ✅ 完成 |
-| 修复 Host 数据层 | stepfun/step-5-preview | R1/R2/R3/R6/R7/R8 + §7C HTTP 路由服务端 → lib/index.js、test/smoke.mjs | ✅ 完成（主会话复验通过） |
-| 修复浏览器半通道 | workbuddy-global/deepseek-v4.1-flash | host.call → fetch 同源路由；删除 defaultEffort 写入 → lib/client.js、test/smoke-client.mjs | ✅ 完成（主会话复验通过） |
-| 补强知识库 | workbuddy/space-bunny | R10 'inherit' 语义 + 按官方 catalog 补全 17 家族 33 条规则 → lib/knowledge.js、test/smoke-knowledge.mjs | ✅ 完成（42 断言 0 失败） |
-| UI-1 数据层 | workbuddy-global/deepseek-v4.1-flash | 总开关+每提供商独立开关+每模型档位复选框的配置层与 getState 扩字段 → lib/index.js、test/smoke.mjs | 运行中（卡 cdda70c2-0b98-465c-bfff-bb37716e1b4b） |
-| UI-2 弹层外壳 | xiaoqieglm/glm-5.3-flash | 注册 single 槽 `conversation.input.model` 顶替官方 chip + Codex 两级菜单 → lib/client.js、test/smoke-client.mjs | 运行中（卡 37ef7432-827b-41de-9eda-4c1dacd82b5b） |
-| UI-3 最大档星空动画 | workbuddy-global/deepseek-v4.1-flash | 蓝紫渐变滑杆 + 星空粒子 + 额度提示（规格 docs/review-notes.md L327-684） | 待运行（卡 ff3493c0-682a-49e1-9e80-90ee819819b1，等 UI-2 落地） |
-| UI-4 设置页改造 | xiaoqieglm/glm-5.3-flash | 总开关 + 提供商列表与独立开关 + 每模型档位复选框 | 待运行（卡 d97efebe-a1af-4b13-8003-ae24108c5933，等 UI-3 落地） |
-| UI-5 对抗验收 | stepfun/step-5-preview | 只读逐条核对 §0 七条验收标准 → docs/ui-verification.md | 待运行（卡 952e9cd5-807a-4d3f-a213-2cdfe32832ed，等 UI-1..4 落地） |
-| 联调+验收 | 主会话 | 装插件实测（安装前征求用户批准） | 未开始 |
-
-UI 五卡串行规则：UI-2 → UI-3 → UI-4 三者同写 `lib/client.js`，必须严格串行（看板无 `blocked_by` 字段，由主会话在上一卡落地后才 `run` 下一卡）；UI-1 独占 `lib/index.js`，与 UI-2 可并行；UI-5 只读，最后运行。
-
-### 方案要点（2026-10-15 用户批准，m00841「开始吧」）
-
-- **B 方案覆盖机制（已实证）**：`conversation.input.model` 是 single 槽，只渲染第一个 entry；动态注册的 entry 自动获得比官方更低的 priority，因此成为 winner，整体顶替官方 chip（asar:736916「a dynamically registered entry is assigned a lower priority than the shipped one, which makes it the winner」、asar:694697「register at a different priority to shadow it (lowest renders)」、asar:733004-733005 `nextPriority = 0` / asar:733227 `allocatePriority: () => --this.nextPriority`）。
-- **两套职责分离**：数据层只接管自定义 API provider（`llm-pi-ai`，我们写 `reasoningEfforts`）；其余 provider（官方/第三方/插件）**一律不写**，它们的思考档位由各自的 `resolveModelInfo` 提供，但 UI 走我们同一套 Codex 弹层。官方模型目录 `buildModelCatalog`（asar:326486-326533）天然覆盖全部 provider，所以 UI 覆盖无需特殊适配。
-- **永久接管**：插件启用即无条件覆盖官方 chip（用户 m00824 定）；设置页总开关只控制「是否写配置」。代价是用户无法切回官方 chip，只能停用插件。
-- **客户端数据通路**：主路径 `ctx.get('connection').api.session.modelCatalog()` → `{result:{value:{groups,default,failures}}}`；提交 `conn.api.session.selectModel({sessionId,provider,model,reasoningEffort?})`（已安装第三方插件 @linxin666/dsh-client-ui-task-board 的实证路径，lib/client.js:12875-12907）。走原始 RPC 须自建①代次计数器（旧响应不覆盖新结果）②刷新时机 `ctx.on('connection/reset', ...)`。
-- **弹层铁律**：不得假设七档，完全按 `reasoning.efforts` 数组渲染；`reasoning === undefined` → 档位区不显示（与官方一致）。
-
-## 7. 残留不确定性（如实记录，验收时逐项清零）
-
-## 7A. 浏览器半通道契约（2026-10-15 验收时验证，权威）
-
-DSH 浏览器半存在**两条通道**（asar:717385/717613），本插件走 Module Loader 包通道：
-
-| | Module Loader 包（factory(require)，本插件） | cordis-client-runner 闭包 |
-|---|---|---|
-| 符号面 | `require`（隐式 baseline external：`@deepseek-ai/dsh-client-ui-primitives`） | 固定 `React/console/styles/host` |
-| `host.call` | **不存在** | 存在，直达本插件 Host 半 |
-| `styles.insert` | **不存在**（用 document 或 require 的样式模块） | 存在 |
-| Host 通信 | **fetch 同源相对路径**到 Host 半 webServer.register 的路由 | host.call |
-
-结论（asar:732350 文档描述的是 runner 闭包通道，勿混淆）：
-- client.js 必须用 `fetch('/dsh-thinking-effort/api', {method, body})` 与 Host 半通信（参考 startup-screen 插件 lib/client.js:24 `var API='/dsh-startup/config'`、lib/index.js:292-363 路由形状 `{kind:'exact', path, handler(req,res)}` + sendJson/readBody）。
-- index.js 必须补 `inject: ['webServer', ...]` + `webServer.register`，否则设置页无端点可达。
-- UI 层样式注入用 `document.head.appendChild(style)`（web profile 下 document 可用，参考插件即如此）。
-- ⚠ **primitives 的裁决（2026-10-15 复核，推翻本节旧说法）**：`@deepseek-ai/dsh-client-ui-primitives` 在 Module Loader 通道**技术上可达**（asar:717385 说它是隐式 baseline external，可用 loader 的 `require` 解析 `MenuItemButton`），但**官方插件编写规范明令禁止 require 它**：asar:292610 原文 "Do not `require('@deepseek-ai/dsh-client-ui-primitives')` or load any other Harness Client package as a module... Write your own controls and match the host instead: copy markup, CSS, and behavior from the primitive into the plugin... Rename copied classes under your plugin's prefix, keep only `--dsw-alias-*` token references"。理由是这类包会无预警变化、纯 JS 插件无类型检查、组件抛错会整块清空槽位（console: `slot entry crashed in '<slot>'`）。
-  **结论：不 require primitives；自己写控件，从官方 primitive 抄 markup/CSS/行为，class 加 `teff-` 前缀，只保留 `--dsw-alias-*` token 引用。**（[docs/review-notes.md:672](docs/review-notes.md#L672) 的「不 require」是对的，本节旧句是错的，已按此改正。）
-
-## 7B. 评审决定（评审卡 step-5-preview 交付 12 条风险，主会话裁决后生效）
-
-### 阻塞级修复（必须落地，否则不许安装）
-
-- **R1 单写者**：第一版**只走 `settings.mutate('llm-pi-ai', ops, expectedRevision)` 单通道**，configEditor 不启用（避免双写竞态）。所有写串行进 `writeQueue`；`expectedRevision` 每次实时 `describe()` 取，禁止缓存；`settings/conflict` → 重新 describe + 重算差集 + 最多重试 3 次（退避 100/300/900ms），仍失败进设置页「待应用」列表，不静默丢弃。
-- **R2 准入三条件**（删掉「疑似推理」猜测分支）：仅当 `reasoning === true` **且** 已有 `thinkingLevelMap`（即已存在 `reasoningEfforts`）**且** 目标档在该 map 中非 null 时才补写。理由：写任何 dict 都会把模型钉成 `reasoning:true`（asar:859990-991），非推理模型（groq llama / azure 全系 / together Qwen2.5）会被误伤成推理模型。
-- **R3 merge 不 replace**：补写算法必须是 `next = {...existing}; 仅 existing[k]===undefined 时才写 kb 值`。理由：resolveModelReasoning 会把未声明的档位显式展开成 `null`（asar:859983-987），跳过 medium 等于宣布「不支持 medium」，会把本来有 medium 的模型（grok-4.3、gpt-oss-120b）功能回退。
-- **R4 off 键三态**：内部建模用 `{kind:'null'|'absent'|'wire', value?}`，不用布尔。缺键 ≠ null：缺键时 UI 照常展示 off 档，多数适配器会下发硬编码 `"none"`（asar:1096914/1096930/1096952）。补写时保留现有 off 状态，缺键就继续缺键。
-- **R8 defaultEffort 不可写进配置**（本轮 grep 实证，推翻骨架卡实现）：`describableReasoningLevel` = `return getSupportedThinkingLevels(model).some((l) => l === effort) ? effort : void 0`（asar:861105），`defaultEffort` 由 `reasoningInfo(model, defaultLevel)` 从 `profile.reasoning` 推导（asar:861222/861136）——**llm-pi-ai 模型条目 schema 无 `defaultEffort` 字段**（860404/860411 仅 `reasoningEfforts`）。因此：**lib/index.js 必须删除所有向模型条目写 `defaultEffort` 的代码**，改为只写 `reasoningEfforts`；默认档由官方 UI 的「默认(provider)」项或用户选择决定。
-
-### 高优先修复
-
-- **R5 YAML off 引号**：落盘是 **settings.yaml**（asar:971821/972302），不是 patch.yml。mutate 只保证内存正确，不保证落盘字形（eemeli stringify 不给 core-schema 字符串加引号）。插件 apply 时启动自检：读 settings.yaml 原文正则查裸 `off:`，命中即设置页横幅告警 + 一键修复。
-- **R6 事件回环抑制**：`settings/document-updated` **带载荷** `(ns, revision)`（asar:972389/1017934）。维护 `lastSelfWrite={ns,revision}`，`ns==='llm-pi-ai' && revision<=lastSelfWrite.revision` 直接 return；事件回调只置 dirty 标志，实际扫描 300ms 去抖合并；按 provider 计算签名去重，签名不变跳过。
-- **R7 探测降级**：`llm.discoverModels` 回复**从不携带 reasoningEfforts**（asar:859022/859269）。三级瀑布改名为「**知识库 → 用户覆盖**」；探测降级为「连通性/模型存在性探测」，设置页文案改为「模型清单+可达性」，不呈现「档位+置信度」。
-
-### 中低优先
-
-- **R9 动画触发条件**：`currentLevel === efforts 中按 THINKING_LEVELS 序的最后一个`（最高可用档），不是硬编码 `'max'`（ant-ling/together/google-vertex 等无 max 档）。
-- **R10 知识库支持 `'inherit'`**：claude 系真实形态是 `{off:null,xhigh:"xhigh",max:"max"}`，low/medium/high **靠缺键兜底**（dispatch 回落厂商默认）。知识库值允许 `'inherit'` 表示「不写这个键」。
-- **R11 chip 档位名用服务端 `name`**：渲染 `efforts.find(e=>e.id===effective)?.name`，不硬编码中英文字典。
-- **R12 主题**：不缓存主题，开弹层前取当前值；动画 artwork 允许硬编码色值，弹层文字/边框必须走 token。
-
-## 7C. Host↔Client API 契约（冻结，两侧按此实现）
-
-- **路由**：Host 半 `inject` 必须含 `webServer`；注册 `{kind:'exact', path:'/dsh-thinking-effort/api', handler}`。
-- **GET** `/dsh-thinking-effort/api` → `200 {ok:true, ...getState()}`。
-- **POST** `/dsh-thinking-effort/api`，body `{method, args}` → `200 {ok:true, data}` / `400 {ok:false, error}`；method 取 `getState|setConfig|setOverrides|clearOverride|rescan|probe`。
-- **getState() 返回**：`{config:{enabled,mode:'auto'|'overlay',probe}, overrides:{'<route>/<modelId>':{efforts,defaultEffort}}, planned:[{route,modelId,source,efforts,defaultEffort}], levels:[...THINKING_LEVELS], rules:[{id,vendor,model,efforts}], configFile, available:boolean}`。
-- **Client 半**：`var API='/dsh-thinking-effort/api'`，`fetch(API)` 读、`fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method,args})})` 写；`styles`/`host` 全局**不可用**（§7A），样式走 `document.head.appendChild(style)`。
+> **一句话定位：这个插件只做 UI。**
+> 它不推断档位、不探测能力、不写任何配置。档位从哪来、有几个、叫什么名字，全部由 DSH 自己决定；插件只负责把这些档位画成一个好看的滑杆，并把用户的选择提交回去。
+>
+> 行号锚点指向 DSH 安装 bundle：
+> `D:\Apps\Users\wang\AppData\Local\Programs\DeepSeek Harness\resources\app.asar`（约 230 万行，未混淆）。
+> 用 grep 工具按内容检索；**不要用 read 读 asar**（会报 BigInt 错误）。
+> asar 行号随版本变动，**不要硬编码**——所有抽取脚本必须按内容锚点扫描。
 
 ---
 
-1. **表单字段复读未完成**：asar 479201/479272 的自定义模型子表单字段列表未逐行复读，「reasoningEfforts 是隐藏字段」的判断依据 = backend schema 存在（860404/860411）+ 早前批次对表单区的确认 + 实机 UI 无该输入。验收时用 cordis_inspect 或 grep 补一刀确认。
-2. **configEditor.edit 后是否必发 full replace**：取决于 llm-pi-ai 对 fiber config 更新的监听实现（866145 一致性哨兵表明 replace 路径可预期）。缓解：写完后若 `llm/adapters-updated` 未触发，可主动再触发一次 registry replace，或同时依赖 `settings/document-updated`（Web 设置页也在订阅清单）。数据层实现需内置「写入后确认 efforts 生效」的自检逻辑。
-3. **settings.mutate 与官方设置页并发写**：官方 Models 页随时可能 mutate 同一 ns（489353），自动接管批量补写时冲突窗口大。缓解（R1）：单写者队列 + 永远带 expectedRevision + conflict 后重算重试（≤3 次退避 100/300/900ms）+ 补写幂等（`desired ⊆ existing` 只写差集，缺键才写，绝不 unset）+ 失败进设置页「待应用」列表不静默丢弃。
-4. **探测通道的凭据**：上游探测走同源代理路由需要凭据服务端解析，Host 半侧注册路由的具体 API 未验证——探测已降级为「连通性/模型存在性」（R7），「非法 effort 报错解析」为实验性旁路（默认关、单模型每日限流、仅用户显式点击触发）。
+## 0. 项目定位与边界
+
+### 0.1 做什么
+
+| 职责 | 说明 |
+|---|---|
+| 顶替输入框的模型 chip | 在 `conversation.input.model` 单槽里以更低 priority 覆盖官方选择器 |
+| Codex 风格档位弹层 | 大字档位名 + 胶囊滑杆 + 六套视觉皮肤 |
+| 设置分区 | 视觉皮肤、调色板、自定义七色、模式开关、实时预览 |
+| 提交选择 | 调官方 `directory.select({provider, model, reasoningEffort})` |
+
+### 0.2 不做什么（重要，别再加回来）
+
+| 不做 | 原因 |
+|---|---|
+| 写 `reasoningEfforts` | DSH 0.2.1-rc.2 起，设置页「提供商 → 模型 → 推理等级」原生可配，落到 `cordis.patch.yml`。插件再写一遍只会和官方抢同一份配置 |
+| 内置厂商知识库 | 同上。官方 catalog 已经是唯一事实来源 |
+| 探测上游能力 | `llm.discoverModels` 从不返回 `reasoningEfforts`（asar:859022/859269），探测只能回答"通不通"，答不出"有哪些档" |
+| Host 半侧逻辑 / HTTP 路由 | 没有需要 Host 参与的数据了。`index.js` 现在是空壳 |
+| 缓存/翻译档位名 | 档位名一律取服务端 `efforts[].name`，缺失才回落 id |
+
+### 0.3 历史包袱（已清理，勿复活）
+
+2026-10-20 之前，本项目存在一整套 Host 半侧实现，已全部删除：
+
+| 已删文件 | 曾负责 |
+|---|---|
+| `lib/index.js` | 扫描 provider、三级能力瀑布、`settings.mutate` 补写、HTTP 路由 |
+| `lib/knowledge.js` | 17 家族 33 条厂商档位规则表 |
+| `lib/client.js` | 旧的浏览器半侧 bundle（`id: 'dsh-thinking-effort'`） |
+| `test/smoke.mjs` / `test/smoke-knowledge.mjs` | 测上面两个 Host 文件 |
+| `test/smoke-client.mjs` | 测旧 bundle 的死断言 |
+| `preview/verify.mjs` / `preview/verify-page.mjs` | 测旧 bundle 与旧预览页结构 |
+| `tools/asar-lines.mjs` | 按硬编码行号从 asar 取内容 |
+| `preview/build-state.mjs` + `vendor/{state,catalog}.json`、`vendor/fixtures.js` | 用 Host 纯函数生成预览 fixture |
+
+**教训：`DESIGN.md` v1.x 里凡是提到这些文件的地方都是历史，不要照着实现。**
+
+---
+
+## 1. 文件结构与构建
+
+### 1.1 源文件
+
+```
+index.js                  Host 半侧入口，只有一个空的 apply()
+cordis.patch.yml          3 行 insert，把插件挂进 bundle
+package.json              type: module；exports / files / dsh 字段见 §1.4
+lib/ui.js                 UI 核心（UMD，导出 globalThis.THINKING_UI_CORE）
+plugin-client-body.js     浏览器半侧：槽位注册 + 设置分区 + 主渲染
+client.js                 构建产物（不要手改）
+locale/{zh,en}.json       插件元信息（title / description）
+icon.svg / icon-v2.svg    图标（两份内容相同，package.json 用 icon-v2.svg）
+tools/build-plugin.mjs    拼接器
+test/smoke-corner-shape.mjs   圆角超椭圆回归（8 条）
+test/smoke-slider-visual.mjs  滑杆视觉回归（19 条）
+preview/                  离线预览（见 §8）
+```
+
+### 1.2 构建链
+
+`tools/build-plugin.mjs` 只做三件事，没有打包器、没有转译：
+
+1. 读 `lib/ui.js`（核心）+ `plugin-client-body.js`（body）；
+2. 把 `preview/assets/*.webp` 共 22 张转成 data URI，注入 `ASSETS` 常量；
+3. 拼成 `window.__ModuleLoader__.load({ id: 'dsh-thinking-bar', factory(require) { ... } })` 写入 `client.js`。
+
+```bash
+node tools/build-plugin.mjs
+# → client.js written: 1893797 chars; 22 assets inlined
+```
+
+### 1.3 安装（本机）
+
+`npm install file:*.tgz` 在这个 profile 里会因**无关的** peer 冲突失败（`@kenz1117/dsh-ui-usage-billing`），所以用直接复制：
+
+```powershell
+Copy-Item client.js, package.json `
+  -Destination C:\Users\wang\.dsh\profiles\desktop\node_modules\dsh-thinking-bar\ -Force
+```
+
+装完必须 **Ctrl+R 刷新页面**，client.js 才会被重新加载。
+
+### 1.4 package.json 关键字段
+
+| 字段 | 值 | 说明 |
+|---|---|---|
+| `type` | `module` | 注意：`lib/ui.js` 是 UMD，`require()` 它拿不到 `module.exports`，要取 `globalThis.THINKING_UI_CORE` |
+| `engines.dsh` | `>=0.2.1-rc.2` | 依赖该版本的 provider 推理等级配置 |
+| `exports["."]` | `./index.js` | Host 入口 |
+| `exports["./client"]` | `./client.js` | 浏览器入口 |
+| `dsh.bundle.patch` | `./cordis.patch.yml` | |
+| `dsh.client.inject` | `dsh-client-ui-settings`、`-model-selection`、`-conversation` | 三个平台模块 |
+| `dsh.client.immediately` | `true` | 立即装载 |
+
+`files[]` 只含 `index.js / client.js / cordis.patch.yml / locale/*.json / icon.svg / icon-v2.svg`。**`lib/`、`test/`、`preview/`、`tools/` 都不打包**——改动它们不影响产物。
+
+---
+
+## 2. 运行时架构（plugin-client-body.js）
+
+### 2.1 插件契约
+
+```js
+return {
+  inject: ['locale', 'slots'],
+  apply(ctx) { ... }
+}
+```
+
+`apply` 里依次做五件事：
+
+1. `UI.injectStyles()` —— 把 `lib/ui.js` 里那份巨型 CSS 注入 `<style id="teff-ui-styles">`（整块替换，便于热更新）。
+2. `setTimeout(resyncPrefs, 0)` + `setTimeout(resyncPrefs, 1200)` —— 冷启动时 localStorage 可能未就绪，读到 null 会回落成 official，必须补读一次。
+3. `ctx.locale.register('thinking-bar', {...})` —— 只注册一个 key：`section.label`（zh「思考等级栏」/ en「Thinking Bar」）。
+4. 设置导航图标：宿主对未知 section id 一律给齿轮且**不开放自定义图标入口**，所以用 `MutationObserver` 观察 `document.body` 直接子节点，找到文案匹配的 nav 按钮打 `data-teff-nav` 标记，再用 CSS mask 换掉图标。宿主 DOM 变了就静默放弃（退回齿轮）。
+5. 两个槽位注册（见 §2.2、§2.3）。
+
+### 2.2 模型 chip 槽：`conversation.input.model`
+
+- 这是 **single 槽**，官方选择器以 `priority: 0` 占位。
+- DSH 规则「priority 越小越先渲染」（asar 提示原文：`register at a different priority to shadow it (lowest renders)`）→ 插件用 **`priority: -1`** 才能盖过官方。
+- **子插槽不要重复声明**：官方那条仍在册，已经声明过 `conversation.input.model.label`，插件再声明会抛 `already declared`；组件里直接 `renderSlot` 即可。
+
+**face（inject 函数）必须容错**，因为 DSH 会把抛错的条目判为**弃权（abdicated）并永久跳过**：
+
+| 情况 | 处理 |
+|---|---|
+| `modelDirectories.directoryFor(sessionId)` 抛错（切会话/冷启动瞬间常见） | 吞掉异常，`return { available: false }`，置 `degraded = true` |
+| `directory.store` 不存在 | 同上 |
+| `sessions.subagentAddress(sessionId) !== undefined`（子代理会话） | `available: false` |
+
+**`reasoning` 必须每次现取**：`directory.catalog.reasoningFor(selection)`。注册座位那一刻目录往往还没建好，若把 catalog 捕获成闭包常量，拿到的永远是 null，所有模型都退回快照里的 `model.reasoning`——而插件新增的模型没有这个字段，表现就是"我们这边没有思考等级，切回官方就有了"。
+
+**自愈**：`degraded` 为真时每 700ms 重注册一次。否则被弃权的条目会一直显示内置选择器（看起来就像"变回官方默认"）。
+
+**座位随模式开关**：`subscribePrefs` 里 `syncSeat()`，`prefs.mode !== 'codex'` 就 `closeSeat()` 让官方 chip 回来。
+
+### 2.3 设置分区槽：`settings.section`
+
+```js
+ctx.slots.register({ name: 'settings.section', id: 'dsh-thinking-bar', order: 27, label: () => t('section.label') }, SettingsSection)
+```
+
+**必须与模型座位分属不同子 ctx**：座位依赖 `modelDirectories` / `sessions`，它抛错会连带销毁同一子 ctx 里的所有注册（历史上就是这样把设置分区一起带走的）。所以设置分区只依赖 `slots`，用独立的 `ctx.effect`。
+
+### 2.4 偏好存储
+
+| 项 | 值 |
+|---|---|
+| localStorage key | `dsh-thinking-bar.prefs.v1` |
+| 结构 | `{ mode: 'codex' \| 'official', visual, palette, custom: string[7] }` |
+| 默认 | `mode: 'codex'`、`visual: 'codex'`、`palette: 'codex'`、`custom: DEFAULT_CUSTOM` |
+| 校验 | `visual` / `palette` 必须命中 `CORE.VISUALS` / `CORE.PALETTES` 的 id；`custom` 必须长度 7 且逐个匹配 `/^#[0-9a-f]{6}$/i`，否则回落 `#888888` |
+| 写入 | `setPrefs(patch)` 后同步 `setItem`，再通知全部 `prefsListeners` |
+
+**首次安装即默认启用 Codex 滑杆**（`mode: 'codex'`）。已保存的偏好不受影响——`readPrefs` 优先读已存值。
+
+---
+
+## 3. UI 核心契约（lib/ui.js）
+
+### 3.1 UMD 外壳
+
+```js
+(function (root, factory) {
+  var api = factory()
+  if (typeof module === 'object' && module.exports) module.exports = api
+  root.THINKING_UI_CORE = api
+})(globalThis /* ... */, function () {
+  'use strict'
+  ...
+  return { /* 导出表 */ }
+})
+```
+
+**测试里怎么取 API**：因为 `package.json` 是 `type: module`，`require('lib/ui.js')` 拿到的是空对象。正确姿势：
+
+```js
+require(path.join(ROOT, 'lib', 'ui.js'))
+const CORE = globalThis.THINKING_UI_CORE
+```
+
+### 3.2 导出表
+
+| 类别 | 成员 |
+|---|---|
+| 工厂 | `createThinkingUI(React)`、`injectStyles(doc)`、`CSS` |
+| 视觉/调色板 | `VISUALS`、`PALETTES`、`THEME_COLORS`、`THEME_ASSETS`、`THEME_VISUALS`、`DEFAULT_CUSTOM`、`themeColors`、`resolvePalette`、`fillPalette`、`colorAt` |
+| 档位 | `CANON`、`CANON_NAMES`、`ENGLISH_NAMES`、`LIANG_NAMES`、`DEFAULT_LEVEL_ID`、`DEFAULT_LEVEL`、`isDefaultLevel`、`withDefaultLevel`、`realRankOf`、`displayLabelOf`、`indexOfLevel`、`isOffLevel`、`findOffIndex`、`levelName`、`levelLabel` |
+| 颜色工具 | `hexToRgb`、`relLuminance`、`contrast`、`ensureContrast`、`rgba` |
+
+`createThinkingUI(React)` 返回 `{ providerLabel, injectStyles, icons: { Data, ChevronDown, ChevronRight, Check, Back, Bolt, Reset, Spinner } }`。
+
+### 3.3 组件清单
+
+| 组件 | 职责 |
+|---|---|
+| `Popup` | 档位弹层：大字档位名（换名交叉淡化）、模型名行、`EffortSlider`、开关/重置按钮 |
+| `Trigger` | 输入框里的 chip：模型名 + 档位名 + chevron，两者各有独立换名动画 |
+| `EffortSlider` | 滑杆本体：拖拽/键盘/吸附/提交、刻度、渐变、视觉层挂载 |
+| `ParticleLayer` | Codex 星尘（**纯 CSS**，见 §5.4） |
+| `EnergyLayer` / `WarpLayer` / `QuantumLayer` | 另外三套 canvas 视觉 |
+| 图标 | `IconBolt`（viewBox 16）、`IconReset`、`IconSpinner`（SVG 圆弧，非 CSS border） |
+
+---
+
+## 4. 档位数据模型
+
+### 4.1 规范档位
+
+```js
+CANON = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+```
+
+服务端给几个档就渲染几个档。**永远不要假设七档**。
+
+### 4.2 Default 哨兵档
+
+- `DEFAULT_LEVEL_ID = '__provider_default__'`
+- `withDefaultLevel(levels, enabled)`：开启时把 `DEFAULT_LEVEL` **插到最前**；已含则原样返回。
+- `realRankOf(levels, index)`：跳过 Default 后计算真实序号。
+- `paletteIndexFor(levels, index)`：`n === 7` 用原下标，否则 `Math.round(index * 6 / (n - 1))` 把任意档位映射到 7 色。
+- `colorAt(levels, index, colors)`：Default 档返回 `colors[0]`（灰）；其余走 `paletteIndexFor`。
+- `displayLabelOf(levels, index, isLiang)`：liang 皮肤用 `LIANG_NAMES = ['梁子','小梁','梁叔','梁哥','梁总','梁神','梁圣']`。
+
+### 4.3 填充色与文字色必须分开取（重要）
+
+| 函数 | 用途 | 是否压对比度 |
+|---|---|---|
+| `fillPalette(id, custom)` | **填充**用色 | ❌ 原色返回 |
+| `resolvePalette(id, custom, tone)` | **文字**用色 | ✅ 逐个 `ensureContrast(c, bg, 4.5)` |
+
+**踩过的坑**：早期填充直接复用 `resolvePalette`，于是为了让文字满足 4.5:1，七色被压向黑白——`#38BDF8` 变成 `#247aa0`，整条轨道发闷。这就是"配色不满意"的真根因。
+
+`plugin-client-body.js` 里对应两个函数：`colorsFor()`（文字，走 `resolvePalette` / `themeColors`）与 `fillColorsFor()`（填充，走 `fillPalette` / `themeColors`），两者都传给 `Popup`。
+
+---
+
+## 5. 滑杆视觉规范
+
+### 5.1 结构层次
+
+```
+div.teff-sliderWrap
+├── div.teff-slider            role=slider，内联 --teff-fill / --teff-glow / --teff-glow-color
+│   ├── div.teff-track         30px 高胶囊，overflow:hidden
+│   │   ├── div.teff-clip      mask 竖切，只显示 0→当前档 那一半
+│   │   │   └── 视觉层（六选一）
+│   │   ├── span.teff-tick × n 刻度分隔线（在 clip 之外，不被遮罩裁掉）
+│   │   └── span.teff-thumb    34px 白圆（artTheme 用 teff-artKnob）
+│   └── div.teff-labels > button.teff-label × n   轨道下方档位文字
+```
+
+**尺寸常量**：轨道 30px；thumb 34px（比轨道大，是"压在轨道上的球"）；`thumbHalf = artTheme ? 10 : 17`。
+
+**位置公式**（三处共用同一锚点，任一元素漏了 `translate(-50%,-50%)` 就会偏半个自身宽度）：
+
+```js
+positionForRatio(r) = 'calc(' + thumbHalf + 'px + ' + pct + '% - ' + trim + 'px)'
+// pct = r*100, trim = ((thumbHalf*2)/100)*pct
+```
+
+### 5.2 刻度分隔线（`teff-tick`）
+
+| 属性 | 值 | 理由 |
+|---|---|---|
+| 宽 × 高 | `3px × 8px` | 落在 30px 轨道里上下各留 11px（"居中、不占满"）；试过 4px 被用户判为"太粗" |
+| 圆角 | `1.5px` + `corner-shape: round` | 胶囊形态是用户认可的样式，不要改成直角 |
+| 位置 | `top:50%; margin:-4px 0 0 -1.5px` | 垂直居中 + 水平中心补偿 |
+| 层级 | `z-index: 1` | 在 clip 之上 |
+| 首末档 | **不画** | 它们贴着端帽，画上去会被圆角裁掉一截，看着比中间的细 |
+| 两态 | `--teff-tick` / `--teff-tick-on` | 未到达 / 已到达 |
+| 淡出 | `opacity: calc(1 - var(--teff-glow,0) * .85)` | 滑块越靠右，左侧已到达的线越淡，最右剩 15% |
+
+**粗细一致靠像素栅格对齐，不是靠加宽**：7 档时 `positionOf(3)` 算出小数，3px 宽的条落在半像素上会被抗锯齿左右各吃半个像素。解法是量出轨道宽度后把圆心吸附到 `1/DPR` 的整数倍：
+
+```js
+var dpr = Math.min(3, devicePixelRatio || 1)
+var snap = function (v) { return Math.round(v * dpr) / dpr }
+var travel = w - thumbHalf * 2
+next.push(snap(thumbHalf + (i / (n - 1)) * travel))
+```
+
+用 `ResizeObserver` 观察 root，宽度变化重算；测宽完成前退回 `positionOf(i)` 的 calc 方案，避免首帧闪跳。
+
+### 5.3 填充渐变：按当前档重标定
+
+```js
+var baseColor = colorAt(levels, 0, fillColors)
+if (n <= 1 || pos <= 0.0001) {
+  gradient = 'linear-gradient(90deg,' + baseColor + ',' + baseColor + ')'   // Off 是纯色
+} else {
+  for (var gi = 0; gi < n; gi++) {
+    var gPos = gi / (n - 1) / pos        // 把 0→当前档 的色阶拉伸到整宽
+    if (gPos > 1.0001) break
+    gStops.push(colorAt(levels, gi, fillColors) + ' ' + (gPos * 100).toFixed(2) + '%')
+  }
+  gStops.push(color + ' 100%')           // 右端（旋钮脚下）永远是当前档色
+  gradient = 'linear-gradient(90deg,' + gStops.join(',') + ')'
+}
+```
+
+语义：调色板仍然决定填充；左端恒为调色板首色，右端恒为当前档色，中段连续插值。被 `mask` 裁掉后半截后，看起来就是"档位越高，紫得越深"。
+
+### 5.4 Codex 星尘（`ParticleLayer`，纯 CSS）
+
+**已彻底移除 canvas / `requestAnimationFrame` / `Math.random`**——随机数导致每次重挂载星图都不一样，且不可离线断言。
+
+| 常量 | 值 |
+|---|---|
+| `STAR_TOTAL` | `72`（参考实现 22 颗是 28px 短轨道口径；本插件轨道更长且盖着星云层，故翻倍） |
+| `GOLDEN_RATIO` | `0.6180339887498949` |
+| 相位 | `phase = ((i + 1) * GOLDEN_RATIO) % 1` |
+| 确定性伪随机 | `starHash01(index, salt)`：`((((index+1) * salt * 2654435761) % 4294967296) >>> 0 >>> 8) % 1000 / 1000` |
+| 亮度 | `0.55 + 0.45 * starHash01(i, 61)` |
+| 速度 | `clamp(3.6 * pos - 1, 0.4, 4.6)` |
+| 能量 | `clamp((pos - 0.08) / (1 - 0.08), 0, 1)`（0.08 起手，不是 1/3） |
+| 颗数 | `Math.round(energy * STAR_TOTAL)` |
+| 星层透明度 | `0.7 + 0.3 * energy` |
+
+**高度与相位必须解耦**：早期版本两者同源，导致"越靠右的星越高"，22 颗排成一条斜线（相关系数 0.999）。现在相位按黄金比排序后，再用 `starHash01(a, 71)` 重排到等距槽位，`y = 10 + (slots[i] / (STAR_TOTAL - 1)) * 80`（10%–90% 高度）。
+
+**负相位必须内联在元素上**：
+
+```js
+animationDuration: dur + 's',
+animationDelay: -delaySec + 's'
+```
+
+写成 CSS 变量在真宿主里**负相位不生效**——会出现"一打开星星全挤在起点，十几秒后才靠速度差散开"。
+
+CSS 侧：`.teff-stars` 是 `overflow:hidden` 的容器；`.teff-star` 是 `height:0` 的横扫轨道，内部 `i` 绝对定位在 `left:100%`，靠容器 `translate3d(-100%)` 从右往左扫。
+
+### 5.5 星云（`teff-nebula`）
+
+```css
+.teff-nebula{
+  position:absolute;inset:0;pointer-events:none;
+  opacity:calc(var(--teff-glow,0) * .9);
+  background:radial-gradient(140% 180% at 6% 50%,var(--teff-glow-color),transparent 64%);
+  background-size:220% 100%;background-repeat:no-repeat;
+  animation:teff-nebula-drift var(--teff-energy-dur,2.4s) ease-in-out infinite alternate
+}
+.teff-nebula::after{ /* 斜向扫光 */ mix-blend-mode:screen; animation:teff-nebula-sweep calc(var(--teff-energy-dur) * 1.4) linear infinite }
+```
+
+`--teff-glow` 是滑杆上已有的内联变量（0→1 的档位比例），Off 时 opacity 自然为 0。
+
+### 5.6 六套视觉与调色板
+
+**视觉（`VISUALS`）**：`codex`（蓝紫渐变 + 星尘）、`energy`（格点充能场）、`warp`（星流加速）、`quantum`（双波干涉）、`whale`（鲸鱼娘深海主题）、`liang`（梁系登基金色）。后两者是 `THEME_VISUALS`，用立绘 + 专属配色，不走调色板。
+
+**调色板（`PALETTES`，6 套 × 7 色）**：
+
+| id | 七色 |
+|---|---|
+| `codex` | `#4DA9FF` `#3B82F6` `#6366F1` `#7C3AED` `#9333EA` `#C026D3` `#FF4FD8` |
+| `aurora` | `#7DD3FC` `#5EEAD4` `#60A5FA` `#A78BFA` `#FBBF24` `#FB7185` `#EF4444` |
+| `solar` | `#FFC46B` `#D9C27A` `#F0A868` `#F58A5B` `#EC6A5C` `#D9568A` `#B44BE0` |
+| `ocean` | `#22D3EE` `#67E8F9` `#38BDF8` `#2DD4BF` `#34D399` `#A3E635` `#FDE047` |
+| `neon` | `#38BDF8` `#22D3EE` `#3B82F6` `#8B5CF6` `#EC4899` `#F97316` `#FACC15` |
+| `morandi` | `#9FB2C6` `#8FA8A0` `#8FA3B8` `#9C96B5` `#B5A38F` `#B08E96` `#A88F8F` |
+
+**六套的首色都必须够亮**（`max >= 140`，色差门槛 morandi 放宽到 30）——首色决定 Off 之上第一档的观感，灰首色会让低档发闷。
+
+---
+
+## 6. 交互规范
+
+### 6.1 滑杆操作
+
+| 操作 | 行为 |
+|---|---|
+| 指针拖拽 | `window` 上挂 `pointermove/up/cancel`；`pointermove` 用 `requestAnimationFrame` 节流（`pendingX`） |
+| 松手 | `applyDraft → commit → animateTo(snapOf(i))`，**不关闭弹层** |
+| 取消（pointercancel） | 回滚到 `snapOf(draftRef.current)`，并 `onLevelChange(props.current)` |
+| 方向键 | ←/↑ −1，→/↓ +1，`Home` 0，`End` n−1；动画 220ms `easeOutCubic` 手写 rAF |
+| Enter / Space | 直接 `commit(idx)` |
+| 拖拽中外部 `current` 变化 | 不介入（`dragging` 守卫） |
+
+**乐观更新**：`commit` 立刻改本地显示，不等写入回执；写入期间不冻结交互。
+
+### 6.2 换名动画
+
+| 位置 | 形态 | 触发 |
+|---|---|---|
+| 弹层大字档位名 | **双层交叉**：旧层 `blur(0→6px)` + `opacity(1→0)` + `translateY(0→-3px)`，新层反向，240ms | `teff-levelSwap` grid 叠层，防宽度抖动 |
+| 底部档位名 / 模型名 / 弹层模型名 | **单层重挂载**：`blur(4px→0)` + `opacity(0→1)` + `translateY(2px→0)`，200ms | `data-fx="true"` 触发 `teff-effort-in` |
+
+**实现模式（可复用）**：
+
+```js
+var fxState = useState({ key: 0, text: props.effortName })
+if (fx.text !== props.effortName) setFx({ key: fx.key + 1, text: props.effortName })  // 渲染期比对，不是 useEffect
+```
+
+- 必须在**渲染期**比对，用 `useEffect` 事后补会让新字先无动画刷一帧再重播，看着闪一下。
+- 递增的 `key` 挂**内层文字 span**，不要挂外层 `button`（会丢焦点、重建 `aria-expanded`）。
+- 多个文字变体（档位名 / 模型名）**各自独立 state**，否则改其一会让另一个白白重播。
+
+**为什么底部不做交叉淡化**：它在横向 flex 行里带 `flex-shrink:1000` + 省略号，双层叠层会撑宽导致右侧箭头抖动。
+
+---
+
+## 7. 主题与宿主 CSS 约束
+
+### 7.1 超椭圆陷阱（最容易踩）
+
+DSH 全局注入了：
+
+```css
+@supports (corner-shape: superellipse(1.5)) {
+  :root { --dsw-corner-shape: superellipse(1.5) }
+  *, :before, :after { corner-shape: var(--dsw-corner-shape) }
+}
+```
+
+于是**任何 `border-radius: 50%` 都会被渲染成圆角矩形**（超椭圆），`999px` 胶囊的端帽会被压出方角。
+
+**规则：凡是圆形或全圆胶囊，必须在同一条规则里显式写 `corner-shape: round`。** 官方组件表里共有 55 处这么写，本插件现有 11 处（`lib/ui.js` 10 处 + `plugin-client-body.js` 1 处）。
+
+`test/smoke-corner-shape.mjs` 会扫描 `lib/ui.js` 与 `plugin-client-body.js` 里所有 `border-radius: 50% / 999px` 规则，缺 `corner-shape: round` 就报错，并带反向自检防止解析器失效假绿。
+
+### 7.2 令牌使用
+
+- 只用 `--dsw-alias-*` 与 `--dsw-static-*`；**不要** require `@deepseek-ai/dsh-client-ui-primitives`（官方规范明令禁止，asar:292610），要抄 markup/CSS 就抄，class 一律加 `teff-` 前缀。
+- 不要用 `--dsw-specific-menu`、`--dsw-shadow-lv3`（语义不对）。
+- 可用：`--dsw-radius-xs/sm/md/lg/xl/panel`、`--dsw-font-family`、`--dsw-focus-ring-width`、`--dsw-elevation-prominent`、`--dsw-menu-surface-fill`、`--dsw-menu-backdrop-filter`。
+
+### 7.3 明暗与主题变量
+
+`--teff-track` / `--teff-thumb` / `--teff-thumb-ring` / `--teff-tick` / `--teff-tick-on` 按 `.teff-card[data-tone="light"|"dark"]` 与 `[data-visual="whale"|"liang"]` 分别定义。whale 浅色轨道 `#d8f3ff`、深色 `#0d3047`；liang 轨道 `#2b1b10`。
+
+### 7.4 降级
+
+`@media (prefers-reduced-motion: reduce)` 里关掉：卡片入场、thumb/chevron 过渡、立绘光晕、轨道扫光、能量层、星尘（`display:none`）、星云漂移、换名动画（`animation:none` + `--out` 直接 `opacity:0`）。
+
+---
+
+## 8. 测试与预览
+
+### 8.1 两个测试套件
+
+```bash
+node test/smoke-corner-shape.mjs    # 8 条：圆角必须配 corner-shape:round
+node test/smoke-slider-visual.mjs   # 19 条：刻度/星尘/渐变/调色板/量子
+```
+
+`smoke-slider-visual.mjs` 覆盖：刻度节点与 `data-on`、首末不画、粗细统一、像素吸附、六套视觉配色、星尘黄金比与哈希、无 canvas/rAF、时长与负延迟内联、能量曲线、reduced-motion、渐变右端锚定当前档、`fillPalette` 未被压暗、孤儿色板、Off 纯色、量子提速。
+
+**写测试的坑**：断言切片要用 `source.indexOf('function EffortSlider')` 作右边界，不要用 `function EnergyLayer`——`QuantumLayer` 排在它后面，会切出空串导致断言假通过。加 `assert.ok(body.length > 2000)` 兜底。
+
+### 8.2 离线预览
+
+```
+preview/index.html        预览页（简化版，见 §9）
+preview/app.js            预览逻辑，自带 PREVIEW_MODEL / PREVIEW_LEVELS，不依赖外部 fixture
+preview/build-theme.mjs   从 app.asar 抽取主题 CSS + corner-shape 全局规则 → vendor/dsh-theme.css
+preview/build-react.mjs   复制 React 到 vendor/react-bundle.js
+preview/assets/*.webp     22 张立绘素材（构建时会内联进 client.js）
+preview/shots/            历史截图（未被引用）
+```
+
+`build-theme.mjs` **按内容锚点扫描**，不硬编码行号：
+
+- 主题 CSS 锚点：`body{--dsw-static-amber-100: rgb(`
+- corner-shape 锚点：`corner_shape_css_default`（取其后第一个 `"` 到 `";` 之间）
+
+抽不到就 `throw`；抽到但不含 `--dsw-alias-` / `--dsw-corner-shape` 也 `throw`。**没有 corner-shape 那段，预览里的圆是真圆，真机是方角——预览就失去意义了。**
+
+---
+
+## 9. 已知限制
+
+1. **`preview/index.html` 是简化版**（约 385 行）。它只验证渲染与主题，不模拟宿主槽位；早期那套 `pv-*` 元素断言的页面已不存在。
+2. **没有自动截图脚本**。视觉验收靠手动开 GUI + 系统级截图；本机 profile 无 playwright / puppeteer。
+3. **`icon.svg` 与 `icon-v2.svg` 内容完全相同**，`package.json` 只引用 `icon-v2.svg`。
+4. **安装不能走 `npm install`**（profile 内有无关的 peer 冲突），只能复制文件。
+5. **`npm pack` 出来的 tgz 需要手动重打**，否则会是旧产物。
+
+---
+
+## 10. 改动检查清单
+
+改 UI 时按这个顺序走：
+
+1. 改 `lib/ui.js`（样式/组件）或 `plugin-client-body.js`（槽位/设置页）；
+2. `node --check lib/ui.js`（`plugin-client-body.js` 是被拼接的片段，`node --check` 会报 `Illegal return statement`，**属正常**）；
+3. 跑两个测试套件；
+4. `node tools/build-plugin.mjs` 重建 `client.js`；
+5. 复制 `client.js` + `package.json` 到 profile，校验两边 SHA256 一致；
+6. 刷新页面验收；
+7. 补 `CHANGELOG.md`；
+8. 需要发布时 `npm pack` 重打 tgz。
+
+**注意**：`plugin-client-body.js` 与 `CHANGELOG.md` 含中文，用 PowerShell `Get-Content` 读会显示 GBK 乱码，**必须用 read 工具**。
+
+---
+
+## 变更记录
+
+- **v2.0（2026-10-20）**：按当前实现整体重写。删除 v1.x 中所有已作废内容——Host 数据层规范、三级能力瀑布、`settings.mutate` 单写者队列、YAML off 引号陷阱、`defaultEffort` 禁写、HTTP 路由契约、`effortVisual()` / `teff-star--a/b/c` 三层星层方案、看板任务表。新增：纯 UI 定位与边界、构建链、槽位注册与降级自愈、填充/文字取色分离、刻度分隔线与像素吸附、CSS 星尘规格、超椭圆 `corner-shape` 约束、测试与预览现状。
+- **v1.1（2026-10-15）**：吸收 `docs/review-notes.md` 评审 R1–R12（历史）。

@@ -13,11 +13,6 @@ b6-dump.txt
 # 截图脚本产物
 *.tmp
 
-# 旧版 dsh-thinking-effort 遗留文件（不入仓，本地保留）
-lib/client.js
-lib/index.js
-lib/knowledge.js
-
 # npm pack output
 *.tgz
 
@@ -27,3 +22,13 @@ lib/knowledge.js
 # 本地 npm 凭据（发布用 token，绝不入仓）
 .npmrc
 .npmtoken
+
+# 测试脚本（本地跑，不入仓）
+test/
+
+# 参考实现（下载来对照的外部仓库）
+.ref/
+
+# 排查过程留下的临时截图
+spin-*.png
+
