@@ -457,26 +457,38 @@ function ModelSeat(props) {
     group.models.find(function (item) {
       return item.id === current.model
     })
-  // 思考等级优先走官方目录的 catalog.reasoningFor()（座位 face 透传过来的
-  // props.reasoning），拿不到才退回快照里的 model.reasoning。
-  let reasoning = model && model.reasoning
-  if (props.reasoning && current) {
-    let official
+  // 思考等级的**唯一事实来源**是 DSH：座位 face 透传的 props.reasoning 就是
+  // 官方 catalog.reasoningFor()。它返回什么就渲染什么，包括 undefined ——
+  // undefined 的意思是「这个模型没有推理能力」，例如用户在模型设置里把推理等级
+  // 关掉了。只有这个函数压根不可用（不是函数 / 抛错）时才退回快照里的
+  // model.reasoning，因为那时的 undefined 是「不知道」，不是「没有」。
+  let reasoning
+  let authoritative = false
+  if (typeof props.reasoning === 'function' && current) {
     try {
-      official = props.reasoning(current)
+      reasoning = props.reasoning(current)
+      authoritative = true
     } catch (error) {
-      official = undefined
+      reasoning = undefined
     }
-    if (official) reasoning = official
   }
+  if (!authoritative) reasoning = model && model.reasoning
   const levels = (reasoning && reasoning.efforts) || []
-  // 宿主在模型切换 / 目录刷新 / 模型版本更新时会瞬时丢掉 efforts（实测 2026-10-17
-  // 模型更新后，松手那一刻 efforts 会变成空数组）。那一帧若直接按空数组渲染，
-  // 滑条会塌成 0 档、点击落点也无处可去。这里沿用上一帧非空的档位，
-  // 等目录恢复后再自然跟上。
-  const levelsRef = React.useRef(levels)
-  if (levels.length) levelsRef.current = levels
-  const rawLevels = levels.length ? levels : levelsRef.current
+  // 宿主刷新目录/模型版本更新时，efforts 会有一帧变成空数组（实测 2026-10-17）。
+  // 那一帧直接按空数组渲染，滑条会塌掉，所以沿用上一帧——但**只限同一个模型**。
+  // 以前这里不区分模型，切到一个没有档位的模型时就把上一个模型的档位顶上来，
+  // 于是关掉推理的模型上还能点出一个并不存在的 low，提交后被 Host 拒掉。
+  // 另外「DSH 说没有推理能力」（reasoning 为 undefined）不桥接：那是明确答复。
+  const modelKey = current ? current.provider + '/' + current.model : ''
+  const levelsRef = React.useRef({ key: modelKey, levels: [] })
+  if (levels.length) levelsRef.current = { key: modelKey, levels: levels }
+  const transientEmpty = authoritative && !!reasoning && levels.length === 0
+  const rawLevels =
+    levels.length > 0
+      ? levels
+      : transientEmpty && levelsRef.current.key === modelKey
+        ? levelsRef.current.levels
+        : []
   const fallbackEffort = reasoning ? reasoning.defaultEffort : undefined
   // 官方只在模型没有 defaultEffort 时才给"provider 默认"那一行空值项
   // （docs/official-ui-notes.md:297-312）；有 defaultEffort 的模型官方不插，
@@ -804,7 +816,10 @@ function ModelSeat(props) {
           // 见 docs/official-ui-source-notes.md:49）：官方把它当成"交回 provider 默认"，
           // 发一个不存在的档位 id 会被 Host 拒掉。
           // 乐观值里显式写 null 而不是省略字段，免得 sameAsOptimistic 认不出这是 Default。
-          const isDefault = id === CORE.DEFAULT_LEVEL_ID
+          const knownEffort = rawLevels.some(function (level) {
+            return level && level.id === id
+          })
+          const isDefault = id === CORE.DEFAULT_LEVEL_ID || !knownEffort
           const selection = isDefault
             ? { provider: current.provider, model: current.model }
             : { provider: current.provider, model: current.model, reasoningEffort: id }
