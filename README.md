@@ -39,38 +39,22 @@
 
 ## 安装
 
-> 前置：DeepSeek Harness **0.2.1-rc.2 及以上**。npm 上是**预构建包**，装完即用，**不需要编译、不需要装 Node**。
+> 前置：DeepSeek Harness **0.2.1-rc.2 及以上**。仓库里带的是**预构建好的 `client.js`**，装完即用，**不需要编译、不需要装 Node**。
 >
-> 已发布到 npm，包名 `dsh-thinking-bar`。下面四种方式任选其一。
+> 下面三种方式任选其一。
 
-### 方式一：npm 安装（最快，推荐）
-
-```bash
-# 直接装进当前 profile（会自动补 dsh.profile.bundles）
-dsh plugin --profile desktop add dsh-thinking-bar
-```
-
-也可以用 pnpm 装进任意 profile：
-
-```bash
-pnpm add dsh-thinking-bar
-```
-
-`--profile` 换成你实际在用的 profile（常见 `desktop` / `web` / `tui`，对应 `~/.dsh/profiles/<名字>/`）。
-
-### 方式二：图形界面（不用命令行）
+### 方式一：图形界面（不用命令行）
 
 1. 打开 DSH，左侧点 **插件** → 右上角 **添加插件**。
 2. 在「包名或地址」里填下面任意一种：
-   - npm 包名（最省事）：`dsh-thinking-bar`
    - 从 GitHub 装：`github:TonyKingWJX/dsh-thinking-bar`
    - 本地目录绝对路径：先 `git clone`（或下载源码包解压），再填这个文件夹的路径，例如 `D:\Apps\dsh-thinking-bar`
 3. 点 **安装**，装完按提示刷新页面（或重启 DSH）。
 4. 插件列表里确认「思考等级栏 / dsh-thinking-bar」处于**启用**状态。
 
-> 若 `github:` 这种写法在你的版本上解析不了（部分解析器只认 npm 包名和本地路径），直接用下面的命令行方式或填本地路径，效果一样。
+> 若 `github:` 这种写法在你的版本上解析不了（部分解析器只认包名和本地路径），直接用下面的命令行方式或填本地路径，效果一样。
 
-### 方式三：命令行（不走 npm）
+### 方式二：命令行（从 GitHub 装）
 
 ```bash
 # 从 GitHub 仓库装（等价于 pnpm add github:TonyKingWJX/dsh-thinking-bar）
@@ -85,7 +69,7 @@ dsh plugin --profile desktop add "link:D:/Apps/dsh-thinking-bar"
 
 这两种写法都等价于在 profile 目录里跑 `pnpm add`，装完重启 DSH 即可。若重启后插件列表里没有它，说明只装进了依赖、没进组合列表，把 `~/.dsh/profiles/<profile>/package.json` 的 `dsh.profile.bundles` 补一行 `"dsh-thinking-bar"` 再重启（界面的「添加插件」不会遇到这个问题）。
 
-### 方式四：手动改 profile（离线 / 内网）
+### 方式三：手动改 profile（离线 / 内网）
 
 1. 把仓库 `git clone`（或下载源码包解压）到任意目录，记下绝对路径。
 2. 编辑 `~/.dsh/profiles/<profile>/package.json`：
