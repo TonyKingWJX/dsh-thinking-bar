@@ -33,3 +33,6 @@ test/
 # 排查过程留下的临时截图
 spin-*.png
 
+# 本机 profile 配置备份（package.json / pnpm-lock.yaml 改动前快照，不入仓）
+.profile-backup/
+
