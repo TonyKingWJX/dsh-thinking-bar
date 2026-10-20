@@ -43,7 +43,7 @@
 >
 > 下面四种方式任选其一。
 
-### 方式一：npm 安装（最省事）
+### 方式一：npm 安装
 
 ```bash
 dsh plugin --profile desktop add dsh-thinking-bar
@@ -53,7 +53,7 @@ dsh plugin --profile desktop add dsh-thinking-bar
 
 > npm 上是**预构建包**，装完不需要编译。若 `npm view dsh-thinking-bar version` 显示的版本比你期望的旧，改用下面的 GitHub 方式装最新代码。
 
-### 方式二：图形界面（不用命令行）
+### 方式二：图形界面
 
 1. 打开 DSH，左侧点 **插件** → 右上角 **添加插件**。
 2. 在「包名或地址」里填下面任意一种：
