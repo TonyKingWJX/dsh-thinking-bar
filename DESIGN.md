@@ -64,6 +64,8 @@ client.js                 构建产物（不要手改）
 locale/{zh,en}.json       插件元信息（title / description）
 icon.svg / icon-v2.svg    图标（两份内容相同，package.json 用 icon-v2.svg）
 tools/build-plugin.mjs    拼接器
+tools/shoot-preview.mjs   重拍 README 截图（驱动 headless Edge 的 CDP，见 §8.2）
+docs/screenshots/         README 引用的截图（由 shoot-preview.mjs 生成）
 test/smoke-corner-shape.mjs   圆角超椭圆回归（8 条）
 test/smoke-slider-visual.mjs  滑杆视觉回归（19 条）
 preview/                  离线预览（见 §8）
@@ -471,8 +473,15 @@ preview/app.js            预览逻辑，自带 PREVIEW_MODEL / PREVIEW_LEVELS�
 preview/build-theme.mjs   从 app.asar 抽取主题 CSS + corner-shape 全局规则 → vendor/dsh-theme.css
 preview/build-react.mjs   复制 React 到 vendor/react-bundle.js
 preview/assets/*.webp     22 张立绘素材（构建时会内联进 client.js）
-preview/shots/            历史截图（未被引用）
 ```
+
+预览页支持 URL 参数直接开到指定状态，不必手点：
+
+```
+?mode=codex&visual=liang&pane=model&open=1&dark=1
+```
+
+`open=1` 直接展开弹层，`pane=effort|model` 选面板，`dark=1` 在首次绘制前就挂上暗色（避免闪白）。
 
 `build-theme.mjs` **按内容锚点扫描**，不硬编码行号：
 
@@ -486,7 +495,15 @@ preview/shots/            历史截图（未被引用）
 ## 9. 已知限制
 
 1. **`preview/index.html` 是简化版**（约 385 行）。它只验证渲染与主题，不模拟宿主槽位；早期那套 `pv-*` 元素断言的页面已不存在。
-2. **没有自动截图脚本**。视觉验收靠手动开 GUI + 系统级截图；本机 profile 无 playwright / puppeteer。
+2. **截图靠 `tools/shoot-preview.mjs`**（本机没有 playwright / puppeteer，故直接驱动 Edge 的 CDP）。它启动 headless Edge，从页面里量出弹层卡片的实际包围盒后按盒裁切，所以卡片尺寸改了也不用改脚本。
+
+   ```bash
+   node tools/shoot-preview.mjs                    # 全部重拍
+   node tools/shoot-preview.mjs --only popup-model-dark
+   node tools/shoot-preview.mjs --out .tmp/probe --scale 1
+   ```
+
+   产物默认写 `docs/screenshots/`，README 直接引用这些文件；清单在脚本顶部的 `SHOTS` 数组里。
 3. **`icon.svg` 与 `icon-v2.svg` 内容完全相同**，`package.json` 只引用 `icon-v2.svg`。
 4. **安装不能走 `npm install`**（profile 内有无关的 peer 冲突），只能复制文件。
 5. **`npm pack` 出来的 tgz 需要手动重打**，否则会是旧产物。

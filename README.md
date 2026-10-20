@@ -27,11 +27,11 @@
 |---|---|---|
 | ![](docs/screenshots/popup-quantum-dark.png) | ![](docs/screenshots/popup-whale-dark.png) | ![](docs/screenshots/popup-liang-dark.png) |
 
-模型列表（同一弹层的另一页）：
+模型列表（同一弹层的另一页，打开即定位到当前模型）：
 
-| 深色 | 梁圣主题 |
-|---|---|
-| ![](docs/screenshots/popup-model-dark.png) | ![](docs/screenshots/popup-liang-model.png) |
+| 深色 | 浅色 | 梁圣主题 |
+|---|---|---|
+| ![](docs/screenshots/popup-model-dark.png) | ![](docs/screenshots/popup-model-light.png) | ![](docs/screenshots/popup-liang-model.png) |
 
 浅色主题：
 

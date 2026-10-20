@@ -58,9 +58,13 @@
 - 新增 `test/smoke-corner-shape.mjs`：静态审计 `lib/ui.js` 与 `plugin-client-body.js` 里每条圆形/胶囊圆角规则都必须同时声明 `corner-shape: round`，并带反向自检（喂构造的违规规则，必须能抓到），避免解析器失效后假绿。
 - `preview/build-theme.mjs` 不再硬编码 asar 行号（主题 CSS 位置随打包变动，旧锚点已失效），改为按内容锚点分块扫描，并额外抽出宿主 `corner-shape.css` 的全局超椭圆规则写进预览样式——否则预览里圆是真圆、真机是方角，看不出这个 bug。
 - 新增 `test/smoke-slider-visual.mjs`：固定分隔线的形态与位置、左侧分隔线随滑动淡出到 15%、六套视觉的专属配色、星尘从 0.08 档位起手且最右速度上限 4.6、星云的漂移与扫光、填充渐变右端锚定当前档、六套调色板起手色不发灰且填充不被文字对比度压暗、Off 档走纯色分支。这几处都是看得见但改起来容易悄悄退化的地方。
+- 新增 `tools/shoot-preview.mjs`：驱动 headless Edge 的 CDP 重拍 README 截图（本机没有 playwright / puppeteer）。它先从页面里量出弹层卡片的实际包围盒再按盒裁切，卡片尺寸变了不用改脚本，鲸鱼娘 / 梁圣溢出的立绘也不会被固定裁剪框切掉。`--only` 可单张重拍、`--out` 改输出目录。
+- 预览页补了直达 URL 参数：`?open=1` 直接展开弹层、`pane=effort|model` 选面板、`dark=1` 在首次绘制前挂上暗色（不闪白），截图与人工核对都不用再手点。
 
 **清理**
 
+- README 截图全部重拍，并补上浅色模型页 `popup-model-light.png`：这批图之前是手工裁的，模型页那两张还停留在圆角不同心、底行被切的旧状态。新图能看出本轮四项改动——同心圆角、底行完整、打开即停在当前模型、以及卡片背后的毛玻璃。
+- 删除 `preview/shots/` 全部 20 张（1.0.0 初始提交时的整页截图，README 一张都没引用）。同批清掉根目录的 `spin-*.png` 排查截图与旧打包产物、`.ref/` 与 `.scratch/` 两个临时目录，共 13.5 MB。
 - 移除宿主半侧遗留代码：`lib/client.js`、`lib/index.js`、`lib/knowledge.js`。这三个是早期「插件自己探测模型、自己写推理档位、自己维护档位知识库」的实现，DSH `0.2.1-rc.2` 起已经在 provider 配置里原生提供推理等级开关，插件不再承担这部分职责，代码全部作废。
 - 移除已经失效的测试与脚本：`test/smoke-client.mjs`、`test/smoke.mjs`、`test/smoke-knowledge.mjs`、`preview/verify.mjs`、`preview/verify-page.mjs`、`tools/asar-lines.mjs`。它们断言的是 `lib/client.js` 里的旧符号（`teff-slider__stars`、`effortVisual()`、`__teff_pure`、`data-plugin-css` 等），这些符号在当前 `lib/ui.js` 里一个都不存在，套件长期「通过」只是因为它测的是旧产物。`tools/asar-lines.mjs` 已被 `preview/build-theme.mjs` 自带的分块扫描取代。
 - 移除预览 fixture 链：`preview/build-state.mjs` 与 `preview/vendor/{state,catalog}.json`、`preview/vendor/fixtures.js`。它生成的是宿主侧模型目录快照，而预览页根本不加载 `fixtures.js`，`preview/app.js` 自带内置档位数据，这条链没有消费者。

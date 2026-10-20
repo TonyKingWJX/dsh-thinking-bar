@@ -2,6 +2,7 @@
 node_modules/
 .work/
 .scratch/
+.tmp/
 .dsh-scratch.txt
 b6-dump.txt
 
