@@ -2822,6 +2822,24 @@ try {
   ReactDOM = null
 }
 const NS = 'thinking-bar'
+// 目录未就绪时**不再**返回占位目录。原因见 seat.inject 里的注释：占位会让本条目
+// 继续占着 single 槽的 winner 却渲染 null，芯片整块空白、官方那条还被挡在后面。
+// 官方 label 子插槽的渲染失败不应该拖垮整个模型菜单。
+class ModelLabelBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error) {
+    console.warn('[dsh-thinking-bar] model label failed:', error)
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children
+  }
+}
 const STORE_KEY = 'dsh-thinking-bar.prefs.v1'
 const DEFAULT_PREFS = {
   mode: 'codex',
@@ -3553,11 +3571,12 @@ function ModelSeat(props) {
   }
 
   // 模型列表里渲染官方 `conversation.input.model.label` 子插槽（官方的 1017 之类的
-  // 角标插件就是挂在它上面的）；宿主没给 renderSlot 或插槽渲染失败时回落到模型名。
+  // 角标插件就是挂在它上面的）。本 entry 没有声明 children，渲染器不会注入
+  // renderSlot，所以这里改用 inject 提供的 renderModelLabelSlot；渲染失败时回落模型名。
   const renderModelLabel = function (group, model, placement, selected) {
-    if (typeof props.renderSlot !== 'function' || !group) return undefined
+    if (typeof props.renderModelLabelSlot !== 'function' || !group) return undefined
     try {
-      return props.renderSlot(
+      return props.renderModelLabelSlot(
         'conversation.input.model.label',
         {
           provider: { id: group.id, name: UI.providerLabel(group) },
@@ -3565,7 +3584,7 @@ function ModelSeat(props) {
           placement: placement,
           selected: !!selected
         },
-        { fallback: model.name }
+        { fallback: model.name, baseProps: props }
       )
     } catch (error) {
       return undefined
@@ -3870,6 +3889,9 @@ return {
       const sessions = scope.sessions
       let disposeSeat = null
       let degraded = false
+      // 自愈的即时叫醒开关：inject 发现目录未就绪时用它把下一次重注册从
+      // 「等下一个轮询周期」提前到「下一拍」。effect 里装好，卸载时清掉。
+      let healKick = null
 
       function closeSeat() {
         if (disposeSeat !== null) {
@@ -3899,23 +3921,84 @@ return {
                 // （session "<id>" resolved no scope / no binding）。切会话和冷启动
                 // 的瞬间恰好就是这种状态，所以这里必须吞掉异常、标记降级，
                 // 交给下面的自愈定时器在会话就绪后重新注册。
+                // 目录未就绪时必须「让位」，不能吞掉：
+                //  - 吞掉 → 本条目仍然是在册的 winner，组件走到 `!available` 早退
+                //    渲染 null，而内置选择器（priority 0）被我们挡在后面，结果整块
+                //    芯片空白；
+                //  - 而且 DSH 把 inject 结果按 (entry × session binding) 缓存
+                //    （sessionInjectCache），这个 available:false 会被该会话永久
+                //    记住，之后目录就绪也不会重跑 inject；
+                //  - 抛出去 → 宿主把本条目判为弃权(abdicated)，内置选择器立刻兜底
+                //    顶上；同时置 degraded，让自愈定时器重新注册（新 entry 身份 =
+                //    新的缓存槽），把我们的皮肤换回来。
                 let directory
                 try {
                   directory = models.directoryFor(sessionId)
                 } catch (error) {
                   degraded = true
-                  return { available: false }
+                  if (healKick) healKick()
+                  throw error
                 }
                 const store = directory && directory.store
                 if (!store) {
                   degraded = true
-                  return { available: false }
+                  if (healKick) healKick()
+                  throw new Error('dsh-thinking-bar: model directory store is not ready')
                 }
                 let available = false
                 try {
                   available = sessions.subagentAddress(sessionId) === undefined
                 } catch (error) {
                   available = false
+                }
+                // 本 entry 没有声明 children，渲染器不会注入 renderSlot；但官方
+                // `conversation.input.model.label` 子插槽仍然存在（声明方是官方选择器）。
+                // 这里给模型菜单一个只读的本地 outlet，按单槽 winner 渲染官方/第三方角标。
+                function renderModelLabelSlot(key, owner, opts) {
+                  const fallback = opts && opts.fallback
+                  if (key !== 'conversation.input.model.label') return fallback
+                  let entry
+                  try {
+                    entry = scope.slots.entriesOfSlot(key)[0]
+                  } catch (error) {
+                    return fallback
+                  }
+                  if (!entry || !entry.component || entry.store !== undefined) return fallback
+                  let injected = {}
+                  if (typeof entry.inject === 'function') {
+                    try {
+                      injected = entry.inject(sessionId) || {}
+                    } catch (error) {
+                      return fallback
+                    }
+                  }
+                  if (injected.hooks || injected.keyedHooks) return fallback
+                  let labelT
+                  if (entry.locale && ctx.locale && typeof ctx.locale.bind === 'function') {
+                    try {
+                      labelT = ctx.locale.bind(entry.locale)
+                    } catch (error) {
+                      labelT = undefined
+                    }
+                  }
+                  const base = Object.assign({}, opts && opts.baseProps)
+                  delete base.renderModelLabelSlot
+                  delete base.renderFactorySlot
+                  delete base.renderSlot
+                  delete base.renderSlotChain
+                  const labelProps = Object.assign({}, base, injected, owner || {}, {
+                    sessionId: sessionId
+                  })
+                  if (labelT) labelProps.t = labelT
+                  try {
+                    return React.createElement(
+                      ModelLabelBoundary,
+                      { fallback: fallback },
+                      React.createElement(entry.component, labelProps)
+                    )
+                  } catch (error) {
+                    return fallback
+                  }
                 }
                 // 官方选择器读的是目录里的 catalog.reasoningFor(selection)，
                 // 快照里的 model.reasoning 并不是每个模型都有；直接复用官方那套，
@@ -3954,7 +4037,8 @@ return {
                     } catch (error) {
                       return Promise.reject(error)
                     }
-                  }
+                  },
+                  renderModelLabelSlot: renderModelLabelSlot
                 }
               }
             }
@@ -3965,13 +4049,18 @@ return {
             //
             // 子插槽不能在这里再声明一次：官方选择器（priority 0，仍然在册）
             // 已经把 `conversation.input.model.label` 声明过了，而 slots.register
-            // 对「已被别人声明过的子插槽」直接抛 already declared。声明是全局的，
-            // 官方那条还在，所以 renderSlot 依然可用，我们在组件里照常调用即可。
+            // 对「已被别人声明过的子插槽」直接抛 already declared。
+            // 本 entry 没有 children，渲染器不会注入 renderSlot；角标由 inject 里的
+            // renderModelLabelSlot 直接读取官方 label 槽的 winner 来渲染。
             return scope.slots.register({ priority: -1, name: seat.name, inject: seat.inject }, ModelSeat)
           })
           degraded = false
         } catch (error) {
           disposeSeat = null
+          // 注册失败必须保持降级标记：原来这里静默吞掉，而上面的 `degraded = false`
+          // 已经执行过，定时器下一拍照样 return，自愈就此永久失效——表现正是
+          // 「芯片一直不回来，只能去设置里切一次样式」。
+          degraded = true
           console.warn('[dsh-thinking-bar] model seat not registered:', error)
         }
       }
@@ -3982,15 +4071,65 @@ return {
       syncSeat(false)
       scope.effect(
         function () {
-          // 自愈：face 因会话未就绪而降级时，隔一会儿重新注册一次，
-          // 否则被弃权的条目会一直显示内置选择器（看起来就像"变回官方默认"）。
-          const timer = setInterval(function () {
-            if (!degraded) return
-            degraded = false
+          // 自愈：face 因会话未就绪而降级时，重新注册一次，否则被弃权的条目会
+          // 一直显示内置选择器（看起来就像"变回官方默认"）。
+          //
+          // 原来是固定 700ms 一轮，那 700ms 就是切会话/冷启动时"闪一下官方芯片"
+          // 的全部时长。现在改成：inject 一降级就立刻叫醒（healKick → 0ms），
+          // 连续失败的快速重试最多 HEAL_FAST_LIMIT 次，之后退回 700ms 慢巡。
+          // 配额是必须的——注册成功会把 degraded 清掉，若 inject 随后又抛错就会
+          // 形成"注册/抛错"配对，没有配额会退化成 0ms 死循环。
+          const HEAL_FAST_MS = 120
+          const HEAL_SLOW_MS = 700
+          const HEAL_FAST_LIMIT = 8
+          let healTimer = null
+          let healStopped = false
+          let healFastLeft = HEAL_FAST_LIMIT
+
+          function healSchedule(ms) {
+            if (healStopped) return
+            if (healTimer !== null) clearTimeout(healTimer)
+            healTimer = setTimeout(healTick, ms)
+          }
+
+          function healTick() {
+            healTimer = null
+            if (healStopped) return
+            if (!degraded) {
+              // 正常运行：配额回满，慢慢巡一拍即可。
+              healFastLeft = HEAL_FAST_LIMIT
+              healSchedule(HEAL_SLOW_MS)
+              return
+            }
             syncSeat(true)
-          }, 700)
+            if (degraded) {
+              healFastLeft = Math.max(0, healFastLeft - 1)
+              healSchedule(healFastLeft > 0 ? HEAL_FAST_MS : HEAL_SLOW_MS)
+              return
+            }
+            // 注册成功，但 inject 的结果还没出来：留一拍再看，配额不重置
+            // （重置只能发生在"整拍都没降级"的时候，否则注册成功/inject 抛错
+            // 会配成对，配额永远复位，退化成 0ms 死循环）。
+            healSchedule(HEAL_FAST_MS)
+          }
+
+          healKick = function () {
+            if (healStopped) return
+            if (healFastLeft <= 0) {
+              // 配额用完：只按慢节奏重试，不再抢拍。
+              healSchedule(HEAL_SLOW_MS)
+              return
+            }
+            healFastLeft -= 1
+            healSchedule(0)
+          }
+
+          healSchedule(HEAL_SLOW_MS)
           return function () {
-            clearInterval(timer)
+            healStopped = true
+            healKick = null
+            if (healTimer !== null) clearTimeout(healTimer)
+            healTimer = null
             unsubscribe()
             closeSeat()
           }

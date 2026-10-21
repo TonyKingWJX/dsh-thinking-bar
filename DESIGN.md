@@ -69,6 +69,9 @@ docs/screenshots/         README 引用的截图（由 shoot-preview.mjs 生成�
 鲸鱼娘/*.jpg              原始出图素材（入库留源；成品 webp 见 preview/assets）
 test/smoke-corner-shape.mjs   圆角超椭圆回归（8 条）
 test/smoke-slider-visual.mjs  滑杆视觉回归（19 条）
+test/smoke-effort-levels.mjs  档位来源与顺序（6 条）
+test/smoke-level-mapping.mjs  档位→索引映射（9 条）
+test/smoke-seat-compat.mjs    与官方槽位的兼容/让位/自愈（6 条）
 preview/                  离线预览（见 §8）
 ```
 
@@ -455,12 +458,17 @@ DSH 全局注入了：
 
 ## 8. 测试与预览
 
-### 8.1 两个测试套件
+### 8.1 五个测试套件（共 48 条，全部源码级断言，无需浏览器）
 
 ```bash
 node test/smoke-corner-shape.mjs    # 8 条：圆角必须配 corner-shape:round
 node test/smoke-slider-visual.mjs   # 19 条：刻度/星尘/渐变/调色板/量子
+node test/smoke-effort-levels.mjs   # 6 条：档位只认服务端 efforts[]，空档位按模型区分缓存
+node test/smoke-level-mapping.mjs   # 9 条：档位 id → 固定槽位（不按第几档取名）
+node test/smoke-seat-compat.mjs     # 6 条：目录未就绪时让位、自愈立即重试且带配额
 ```
+
+`smoke-seat-compat.mjs` 锁的是三件事：降级时必须 `degraded = true` 后抛错（不能吞成 `available:false`）、自愈定时器不能被静默失败卡死、`healKick()` 立即追赶且受 `HEAL_FAST_LIMIT` 配额约束。
 
 `smoke-slider-visual.mjs` 覆盖：刻度节点与 `data-on`、首末不画、粗细统一、像素吸附、六套视觉配色、星尘黄金比与哈希、无 canvas/rAF、时长与负延迟内联、能量曲线、reduced-motion、渐变右端锚定当前档、`fillPalette` 未被压暗、孤儿色板、Off 纯色、量子提速。
 
@@ -509,6 +517,8 @@ preview/assets/*.webp     22 张立绘素材（构建时会内联进 client.js�
 3. **`icon.svg` 与 `icon-v2.svg` 内容完全相同**，`package.json` 只引用 `icon-v2.svg`。
 4. **安装不能走 `npm install`**（profile 内有无关的 peer 冲突），只能复制文件。
 5. **`npm pack` 出来的 tgz 需要手动重打**，否则会是旧产物。
+6. **被寻址的子智能体会话不显示模型/档位芯片——这是官方设计，不是 bug。** 官方 `ui-model-selection` 的 `ModelSelect` 里写着 `if (!available) return null`，它自己也写着同一条 `available = sessions.subagentAddress(sessionId) === void 0`；我们逐行同构（`plugin-client-body.js:1137-1141` + `plugin-client-body.js:635`）。这类会话里 `available:false` 是**稳定的正常状态**（`degraded` 不置位、自愈不空转、目录不加载），只是本条目占了 single 槽 winner 却渲染 0 像素。**不要**把它改回抛错让位：弃权按 `(slotKey, entry)` 记而非按 session 记，在子会话里抛一次会让皮肤对**所有**会话掉线。
+7. **冷启动/切会话瞬间可能闪一下官方芯片**。目录未就绪时我们主动抛错让位（弃权 → 内置选择器兜底），随后 `healKick()` 立即重注册把皮肤换回来；`HEAL_FAST_LIMIT` 配额耗尽后退到 `700ms` 慢拍。这是「宁可见一下官方芯片，也不要空白」的取舍，不是故障。
 
 ---
 
@@ -518,7 +528,7 @@ preview/assets/*.webp     22 张立绘素材（构建时会内联进 client.js�
 
 1. 改 `lib/ui.js`（样式/组件）或 `plugin-client-body.js`（槽位/设置页）；
 2. `node --check lib/ui.js`（`plugin-client-body.js` 是被拼接的片段，`node --check` 会报 `Illegal return statement`，**属正常**）；
-3. 跑两个测试套件；
+3. 跑全部五个测试套件（§8.1，48 条）；
 4. `node tools/build-plugin.mjs` 重建 `client.js`；
 5. 复制 `client.js` + `package.json` 到 profile，校验两边 SHA256 一致；
 6. 刷新页面验收；
