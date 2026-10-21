@@ -584,7 +584,7 @@
     var themeColors = CORE.themeColors(visual, tone)
     var effortEnglish = effortLevel
       ? visual === 'liang'
-        ? CORE.LIANG_NAMES[Math.max(0, Math.min(6, levelIndex))]
+        ? CORE.LIANG_NAMES[CORE.liangSlotOf(info.levels, levelIndex)]
         : CORE.levelLabel(effortLevel.id, effortLevel.name)
       : undefined
     var effortColor = effortLevel

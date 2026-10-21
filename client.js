@@ -100,6 +100,42 @@ window.__ModuleLoader__.load({
 
   var LIANG_NAMES = ['梁子', '小梁', '梁叔', '梁哥', '梁总', '梁神', '梁圣']
 
+  /* 梁系 7 阶固定表：档位 id（归一化）→ 槽位。
+   * 名字、滑块立绘、弹层背景都按这张表取，跟"第几档"无关——
+   * 模型只给 4 档时，Max 也必须是梁圣。 */
+  var LIANG_SLOT_BY_ID = {
+    off: 0,
+    none: 0,
+    关闭: 0,
+    无: 0,
+    disabled: 0,
+    disable: 0,
+    minimal: 1,
+    low: 2,
+    medium: 3,
+    high: 4,
+    xhigh: 5,
+    max: 6
+  }
+
+  /* 鲸鱼娘 7 张表情固定表：档位 id（归一化）→ 帧号。
+   * 动作动画在 CSS 里也按帧号挂（data-level），所以图和动作永远同步。
+   * high / xhigh 按产品要求互换：high 生气摇晃(whale-5)，xhigh 开心弹跳(whale-4)。 */
+  var WHALE_FRAME_BY_ID = {
+    off: 0,
+    none: 0,
+    关闭: 0,
+    无: 0,
+    disabled: 0,
+    disable: 0,
+    minimal: 1,
+    low: 2,
+    medium: 3,
+    high: 5,
+    xhigh: 4,
+    max: 6
+  }
+
   var THEME_COLORS = {
     whale: {
       light: ['#2E607D', '#267295', '#1D6A95', '#195B85', '#284D91', '#463D91', '#633A91'],
@@ -276,6 +312,29 @@ window.__ModuleLoader__.load({
     return rank
   }
 
+  /* 固定槽位查表：档位 id / name（归一化）→ 0..6。
+   * 命中就返回表里的槽位；认不出的自定义 id 按相对位置投影（首档 0、末档 6），
+   * 保证任何 provider 的档位都能落到一个确定的表情/名字上。 */
+  function fixedSlotOf(map, levels, index) {
+    if (!levels || index < 0 || index >= levels.length) return 0
+    var level = levels[index]
+    if (!level) return 0
+    var keys = [normalizeLevelKey(level.id), normalizeLevelKey(level.name)]
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i]
+      if (key && Object.prototype.hasOwnProperty.call(map, key)) return map[key]
+    }
+    return paletteIndexFor(levels, index)
+  }
+
+  function liangSlotOf(levels, index) {
+    return clamp(fixedSlotOf(LIANG_SLOT_BY_ID, levels, index), 0, LIANG_NAMES.length - 1)
+  }
+
+  function whaleFrameOf(levels, index) {
+    return clamp(fixedSlotOf(WHALE_FRAME_BY_ID, levels, index), 0, 6)
+  }
+
   function colorAt(levels, index, colors) {
     if (!levels || !levels.length) return colors[3] || '#a78bfa'
     var safe = clamp(index, 0, levels.length - 1)
@@ -349,7 +408,7 @@ window.__ModuleLoader__.load({
     var level = levels[index]
     if (isDefaultLevel(level)) return 'Default'
     if (isLiang) {
-      return LIANG_NAMES[clamp(realRankOf(levels, index), 0, LIANG_NAMES.length - 1)]
+      return LIANG_NAMES[liangSlotOf(levels, index)]
     }
     return levelLabel(level.id, level.name)
   }
@@ -1657,6 +1716,13 @@ window.__ModuleLoader__.load({
       var fillCss = positionForRatio(pos)
       var ariaNow = Math.round(pos * 1000)
       var currentLabel = displayLabelOf(levels, idx, isLiang)
+      /* 立绘帧 / data-level 都走固定槽位：梁系按梁表，鲸鱼娘按表情表，
+       * 其余主题没有分档素材，保持原来的下标不变。 */
+      var frameIndex = artTheme
+        ? isLiang
+          ? liangSlotOf(levels, idx)
+          : whaleFrameOf(levels, idx)
+        : idx
       var isEnergy = visual === 'energy'
       var isWarp = visual === 'warp'
       var isQuantum = visual === 'quantum'
@@ -1821,7 +1887,7 @@ window.__ModuleLoader__.load({
             },
             'data-dragging': dragging ? 'true' : 'false',
             'data-visual': visual,
-            'data-level': String(idx),
+            'data-level': String(frameIndex),
             role: 'slider',
             tabIndex: props.disabled ? -1 : 0,
             'aria-disabled': props.disabled ? 'true' : undefined,
@@ -1843,7 +1909,7 @@ window.__ModuleLoader__.load({
                     assetUrl(
                       assetBase,
                       THEME_ASSETS[visual].frames[
-                        clamp(idx, 0, THEME_ASSETS[visual].frames.length - 1)
+                        clamp(frameIndex, 0, THEME_ASSETS[visual].frames.length - 1)
                       ],
                       props.assets
                     ) +
@@ -2305,8 +2371,11 @@ window.__ModuleLoader__.load({
         : props.effortName !== undefined
           ? props.effortName
           : '—'
-      // 主题帧按"真实档位"排位取，Default 格不占帧，否则插一格后整个主题错位。
-      var themeFrameIndex = clamp(realRankOf(levels, currentIndex), 0, 6)
+      // 梁系弹层背景按固定槽位取（跟名字/立绘同一张表）；鲸鱼娘背景只有一张，
+      // 这里保持原来的排位算法不影响它。
+      var themeFrameIndex = isLiang
+        ? liangSlotOf(levels, currentIndex)
+        : clamp(realRankOf(levels, currentIndex), 0, 6)
       var hero = artTheme
         ? Array.isArray(THEME_ASSETS[visual].hero)
           ? THEME_ASSETS[visual].hero[themeFrameIndex]
@@ -2713,6 +2782,8 @@ window.__ModuleLoader__.load({
     isDefaultLevel: isDefaultLevel,
     withDefaultLevel: withDefaultLevel,
     realRankOf: realRankOf,
+    liangSlotOf: liangSlotOf,
+    whaleFrameOf: whaleFrameOf,
     displayLabelOf: displayLabelOf,
     THEME_COLORS: THEME_COLORS,
     themeColors: themeColors,
